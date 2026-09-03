@@ -13,3 +13,6 @@ salida/
 
 # Perfiles de cámara generados en pruebas
 perfiles/*.json
+
+# Pesos de modelos: se descargan solos
+*.pt

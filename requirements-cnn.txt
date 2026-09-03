@@ -1,0 +1,6 @@
+# Detectores del diseno (etapa 2 y 3). ~2,5 GB con torch.
+# torch para CPU:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+torch>=2.4
+torchvision>=0.19
+ultralytics>=8.3

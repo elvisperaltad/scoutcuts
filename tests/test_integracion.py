@@ -17,7 +17,7 @@ from cortador.perfil import Perfil
 
 RAIZ = Path(__file__).resolve().parents[1]
 VIDEO = RAIZ / "fixtures" / "jornada_sintetica.mp4"
-PERFIL = RAIZ / "fixtures" / "perfil_sintetico.json"
+PERFIL = RAIZ / "fixtures" / "perfil_sintetica.json"
 ESPERADO = RAIZ / "fixtures" / "jornada_sintetica.esperado.json"
 
 TOLERANCIA = 4.0  # s: el borde se ajusta al keyframe exterior y lleva colchon

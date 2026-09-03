@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 from . import ffmpeg
@@ -14,11 +15,14 @@ from .reglas import Ajustes
 
 
 def _ajustes_desde(args: argparse.Namespace) -> Ajustes:
-    return Ajustes(
+    ajustes = Ajustes(
         gap_fusion=args.gap_fusion,
         min_duracion=args.min_duracion,
         colchon=args.colchon,
     )
+    if args.umbral_cambio is not None:
+        ajustes = replace(ajustes, umbral_cambio=args.umbral_cambio)
+    return ajustes
 
 
 def _tabla(segmentos) -> str:
@@ -74,7 +78,8 @@ def cmd_calibrar(args: argparse.Namespace) -> int:
 
 def cmd_analizar(args: argparse.Namespace) -> int:
     perfil = Perfil.cargar(args.perfil)
-    resultado = analizar(args.video, perfil, _ajustes_desde(args), registrar=print)
+    resultado = analizar(args.video, perfil, _ajustes_desde(args), args.detector,
+                         args.modo_identidad, registrar=print)
     print()
     print(_tabla(resultado.segmentos))
     return 0
@@ -82,7 +87,8 @@ def cmd_analizar(args: argparse.Namespace) -> int:
 
 def cmd_cortar(args: argparse.Namespace) -> int:
     perfil = Perfil.cargar(args.perfil)
-    resultado = cortar(args.video, perfil, args.salida, _ajustes_desde(args), registrar=print)
+    resultado = cortar(args.video, perfil, args.salida, _ajustes_desde(args), args.detector,
+                       args.modo_identidad, registrar=print)
     print()
     print(_tabla(resultado.segmentos))
     print(f"\n{len(resultado.clips)} clips en {args.salida}")
@@ -105,6 +111,12 @@ def construir_parser() -> argparse.ArgumentParser:
                        help="segundos de ausencia que aun se fusionan si vuelve el mismo pelotero")
         p.add_argument("--min-duracion", type=float, default=Ajustes.min_duracion, dest="min_duracion",
                        help="descarta lo que dure menos (gente cruzando el cuadro)")
+        p.add_argument("--detector", choices=("color", "yolo"), default="color",
+                       help="presencia. color: OpenCV puro. yolo: YOLOv8n, mejor si el fondo cambia")
+        p.add_argument("--identidad", choices=("color", "cnn"), default="color", dest="modo_identidad",
+                       help="apariencia. color: histograma. cnn: ResNet-18, separa personas parecidas")
+        p.add_argument("--umbral-cambio", type=float, default=None, dest="umbral_cambio",
+                       help="distancia de apariencia a partir de la cual son dos peloteros")
         p.add_argument("--colchon", type=float, default=Ajustes.colchon,
                        help="segundos de margen a cada lado del turno")
 

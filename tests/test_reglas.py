@@ -6,9 +6,12 @@ mira quien es: asi se prueba la logica de segmentacion y no el descriptor.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 
+from cortador import identidad
 from cortador.reglas import Ajustes, Segmento, ajustar_a_keyframes, segmentar
 
 DT = 2.0  # muestreo cada 2 s, como el GOP del material real
@@ -21,10 +24,14 @@ def desc(etiqueta: str) -> np.ndarray:
     return v
 
 
-def dist(a, b) -> float:
+def _distancia(a, b) -> float:
     if a is None or b is None or not a.any() or not b.any():
         return 1.0
     return 0.0 if int(np.argmax(a)) == int(np.argmax(b)) else 1.0
+
+
+# Modulo de apariencia falso: la logica de segmentacion no depende del descriptor.
+APARIENCIA = SimpleNamespace(distancia=_distancia, promedio=identidad.promedio)
 
 
 def construir(guion: list[tuple[float, float, str]], duracion: float):
@@ -41,7 +48,7 @@ def construir(guion: list[tuple[float, float, str]], duracion: float):
 def turnos(guion, duracion=440.0, ajustes=None):
     tiempos, ocupado, descs, keyframes = construir(guion, duracion)
     return segmentar(tiempos, ocupado, descs, keyframes, duracion,
-                     ajustes or Ajustes(), dist=dist)
+                     ajustes or Ajustes(), apariencia=APARIENCIA)
 
 
 def test_turno_normal_se_detecta_entero():

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from bisect import bisect_left, bisect_right
 from dataclasses import dataclass, field, replace
-from typing import Callable, Sequence
+from typing import Any, Sequence
 
 import numpy as np
 
@@ -74,7 +74,7 @@ def partir_por_apariencia(
     tiempos: Sequence[float],
     descs: Sequence[Descriptor],
     ajustes: Ajustes,
-    dist: Callable[[Descriptor, Descriptor], float] = identidad.distancia,
+    apariencia: Any = identidad,
 ) -> list[tuple[int, int]]:
     """Caso 2: uno sale mientras el otro ya entra y el cajon nunca queda vacio.
 
@@ -87,9 +87,9 @@ def partir_por_apariencia(
 
     cortes: list[int] = []
     for c in range(i + k, j - k + 2):
-        antes = identidad.promedio(list(descs[c - k : c]))
-        despues = identidad.promedio(list(descs[c : c + k]))
-        if dist(antes, despues) <= ajustes.umbral_cambio:
+        antes = apariencia.promedio(list(descs[c - k : c]))
+        despues = apariencia.promedio(list(descs[c : c + k]))
+        if apariencia.distancia(antes, despues) <= ajustes.umbral_cambio:
             continue
         if cortes and tiempos[c] - tiempos[cortes[-1]] < ajustes.min_separacion_cambio:
             continue
@@ -105,7 +105,7 @@ def partir_por_apariencia(
 
 
 def fusionar(segmentos: list[Segmento], ajustes: Ajustes,
-             dist: Callable[[Descriptor, Descriptor], float] = identidad.distancia) -> list[Segmento]:
+             apariencia: Any = identidad) -> list[Segmento]:
     """Caso 1: el pelotero se ajusta el guante y vuelve. Un turno, no dos clips."""
     if not segmentos:
         return []
@@ -113,12 +113,12 @@ def fusionar(segmentos: list[Segmento], ajustes: Ajustes,
     for actual in segmentos[1:]:
         previo = salida[-1]
         hueco = actual.inicio - previo.fin
-        mismo = dist(previo.descriptor, actual.descriptor) <= ajustes.umbral_cambio
+        mismo = apariencia.distancia(previo.descriptor, actual.descriptor) <= ajustes.umbral_cambio
         if 0 <= hueco <= ajustes.gap_fusion and mismo:
             salida[-1] = Segmento(
                 inicio=previo.inicio,
                 fin=actual.fin,
-                descriptor=identidad.promedio([previo.descriptor, actual.descriptor]),
+                descriptor=apariencia.promedio([previo.descriptor, actual.descriptor]),
                 muestras=previo.muestras + actual.muestras,
                 notas=previo.notas + [f"fusionado (hueco {hueco:.0f} s)"],
             )
@@ -164,21 +164,21 @@ def segmentar(
     keyframes: Sequence[float],
     duracion: float,
     ajustes: Ajustes | None = None,
-    dist: Callable[[Descriptor, Descriptor], float] = identidad.distancia,
+    apariencia: Any = identidad,
 ) -> list[Segmento]:
     ajustes = ajustes or Ajustes()
 
     segmentos: list[Segmento] = []
     for tramo in agrupar(tiempos, ocupado):
-        for i, j in partir_por_apariencia(tramo, tiempos, descs, ajustes, dist):
+        for i, j in partir_por_apariencia(tramo, tiempos, descs, ajustes, apariencia):
             segmentos.append(Segmento(
                 inicio=tiempos[i],
                 fin=_fin_de_muestra(tiempos, j),
-                descriptor=identidad.promedio(list(descs[i : j + 1])),
+                descriptor=apariencia.promedio(list(descs[i : j + 1])),
                 muestras=j - i + 1,
             ))
 
-    segmentos = fusionar(segmentos, ajustes, dist)
+    segmentos = fusionar(segmentos, ajustes, apariencia)
     segmentos = descartar_cortos(segmentos, ajustes)
     segmentos = aplicar_colchon(segmentos, ajustes, duracion)
     segmentos = ajustar_a_keyframes(segmentos, keyframes, duracion)

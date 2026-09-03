@@ -9,6 +9,9 @@ description = "Parte una jornada de academia de beisbol en un mp4 por turno al b
 requires-python = ">=3.11"
 dependencies = ["numpy>=1.26", "opencv-python>=4.10"]
 
+[project.optional-dependencies]
+cnn = ["torch>=2.4", "torchvision>=0.19", "ultralytics>=8.3"]
+
 [project.scripts]
 cortador = "cortador.cli:main"
 
