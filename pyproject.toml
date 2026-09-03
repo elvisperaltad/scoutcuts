@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cortador-turnos"
+version = "0.1.0"
+description = "Parte una jornada de academia de beisbol en un mp4 por turno al bate"
+requires-python = ">=3.11"
+dependencies = ["numpy>=1.26", "opencv-python>=4.10"]
+
+[project.scripts]
+cortador = "cortador.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

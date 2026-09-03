@@ -1,0 +1,30 @@
+{
+  "duracion": 440.0,
+  "turnos": [
+    {
+      "inicio": 15.0,
+      "fin": 75.0,
+      "pelotero": "P-01"
+    },
+    {
+      "inicio": 90.0,
+      "fin": 200.0,
+      "pelotero": "P-02"
+    },
+    {
+      "inicio": 215.0,
+      "fin": 275.0,
+      "pelotero": "P-03"
+    },
+    {
+      "inicio": 275.0,
+      "fin": 335.0,
+      "pelotero": "P-04"
+    },
+    {
+      "inicio": 370.0,
+      "fin": 430.0,
+      "pelotero": "P-05"
+    }
+  ]
+}

@@ -1,0 +1,3 @@
+# Motor (fase 1). Ligero a propósito: sin torch todavía.
+numpy>=1.26
+opencv-python>=4.10

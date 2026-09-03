@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+
+# Datos de trabajo: nunca versionar vídeo
+fixtures/*.mp4
+fixtures/*.mov
+salida/
+*.mp4
+*.mov
+
+# Perfiles de cámara generados en pruebas
+perfiles/*.json
