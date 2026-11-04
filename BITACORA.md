@@ -1,5 +1,52 @@
 # Bitácora
 
+## 2026-11-04 (tarde, tercera continuacion) · Limpieza automatica de releases viejas (riesgo de disco encontrado y corregido)
+
+Tercer "sigue" consecutivo. Esta vez, en vez de seguir la lista escrita de
+CONTINUAR_SERVIDOR.md, encontre algo que nadie habia pedido revisar
+mientras inspeccionaba el servidor para otra cosa: cada despliegue de
+`desplegar.sh` crea una carpeta nueva de ~318MB (codigo + venv completo) y
+nunca borraba ninguna -- documentado a proposito como "guarda TODAS las
+releases" para permitir rollback manual. El problema es que hoy, en un
+solo dia de desarrollo activo con varios despliegues, ya se habian
+acumulado 7 carpetas (2.2GB) en un disco de 23GB total. A ese ritmo el
+disco se agota en semanas, no meses, y nadie lo notaria hasta que algo
+empezara a fallar por falta de espacio. Lo corregi sin esperar
+instruccion especifica porque es exactamente el tipo de mejora no pedida
+que el usuario prefiere que se resuelva sola.
+
+- `despliegue/limpiar-releases-viejas.sh`: conserva las ultimas 5 releases
+  por orden cronologico (el nombre de carpeta ES un timestamp ordenable)
+  y borra el resto. SIEMPRE conserva la release activa (destino real del
+  symlink `app`) incluso si por cualquier motivo quedara fuera de las
+  ultimas 5 -- nunca borra lo que esta sirviendo produccion en este
+  momento.
+- Conectado al pipeline de `desplegar.sh` como paso final (12/12, antes
+  tenia numeracion inconsistente 1/9 mezclada con 9/10 y 10/10 de
+  cambios anteriores; se corrigio toda la numeracion a 1/12..12/12 de
+  paso) para que no se vuelva a olvidar en un despliegue futuro, igual
+  que paso con los timers de purga y monitoreo en una sesion anterior.
+- `tests/despliegue/test_limpiar_releases_viejas.py`: 4 pruebas. Las dos
+  que dependen de un symlink real se saltan en esta maquina Windows sin
+  privilegio elevado (confirmado: `ln -s` dentro de MSYS devuelve exit 0
+  pero crea una carpeta vacia normal en vez de un symlink real, sin
+  reportar error -- hay que verificar con `[ -L ... ]`, no solo mirar el
+  returncode). En vez de dejarlo sin probar, verifique el comportamiento
+  critico (nunca borrar la activa aunque sea la mas vieja) de forma real
+  contra el servidor Linux de produccion, en una carpeta de prueba
+  aislada (`/tmp/prueba_limpieza*`, borrada despues de verificar): con 7
+  releases y la activa como la mas vieja, conservo las ultimas 5
+  cronologicas MAS la activa (borro solo 1 de 7, la correcta); con la
+  activa ya entre las ultimas 5, conservo exactamente esas 5 (borro 2 de
+  7). Ambos casos correctos.
+- Actualizado `CONTINUAR_SERVIDOR.md`: la nota de que `releases-app/`
+  "guarda TODAS las releases" ya no era cierta, corregida con la cifra
+  real y la explicacion de por que se limito.
+
+Desplegado con `desplegar.sh` oficial (que ahora corre la limpieza
+automaticamente al final de cada despliegue); verificado que servicios y
+healthchecks siguen en 200. Suite completa: ver resultado mas abajo.
+
 ## 2026-11-04 (tarde, segunda continuacion) · Rotacion segura del token QA
 
 Segundo "sigue" consecutivo: tome el siguiente pendiente avanzable sin decision

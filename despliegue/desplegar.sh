@@ -31,7 +31,7 @@ NGINX_DRAFT=${NGINX_DRAFT:-"$(dirname "$0")/nginx-scoutcuts.conf"}
 SELLO="$(date -u +%Y%m%d%H%M%S)"
 RELEASE="$RELEASES/$SELLO"
 
-echo "==> 1/9 Preparando release $SELLO (root:root, sin escritura para cortador)"
+echo "==> 1/12 Preparando release $SELLO (root:root, sin escritura para cortador)"
 install -d -m 755 "$RELEASES"
 install -d -o root -g root -m 755 "$RELEASE"
 rsync -a \
@@ -55,7 +55,7 @@ if ! compgen -G "$RELEASE/perfiles/*.json" > /dev/null; then
 fi
 echo "    Perfiles encontrados: $(ls "$RELEASE"/perfiles/*.json | wc -l)"
 
-echo "==> 2/9 Creando venv e instalando .[servidor] (propiedad root, de solo lectura para cortador)"
+echo "==> 2/12 Creando venv e instalando .[servidor] (propiedad root, de solo lectura para cortador)"
 python3 -m venv "$RELEASE/.venv"
 "$RELEASE/.venv/bin/pip" install --upgrade pip >/dev/null
 "$RELEASE/.venv/bin/pip" install -e "$RELEASE[servidor]"
@@ -68,7 +68,7 @@ find "$RELEASE" -type d -exec chmod 750 {} +
 find "$RELEASE" -type f -exec chmod 640 {} +
 find "$RELEASE/.venv/bin" -type f -exec chmod 750 {} +
 
-echo "==> 3/9 Variables en $ENVF (640 root:cortador; sin imprimir valores)"
+echo "==> 3/12 Variables en $ENVF (640 root:cortador; sin imprimir valores)"
 install -d -o root -g root -m 755 /etc/cortador-control
 touch "$ENVF"; chown root:cortador "$ENVF"; chmod 640 "$ENVF"
 add_var() {  # add_var CLAVE VALOR  -> solo si la clave no existe aun
@@ -92,7 +92,7 @@ add_var SCOUTCUTS_QA            "$DATOS/qa"
 add_var SCOUTCUTS_PERFILES     "$APP/perfiles"
 add_var SCOUTCUTS_ENTREGA_NGINX 1
 
-echo "==> 4/9 Grupo de entrega y carpetas de datos"
+echo "==> 4/12 Grupo de entrega y carpetas de datos"
 getent group entrega >/dev/null || groupadd --system entrega
 usermod -aG entrega cortador
 usermod -aG entrega www-data
@@ -107,16 +107,16 @@ install -d -o cortador -g cortador -m 750 "$DATOS/tmp"
 # así nginx (www-data, miembro de `entrega`) puede atravesar y leer sin que
 # el propio proceso de la API tenga que saberlo ni sin abrir a otros usuarios.
 
-echo "==> 5/9 Activando la release (symlink atomico)"
+echo "==> 5/12 Activando la release (symlink atomico)"
 ln -sfn "$RELEASE" "$APP.nuevo"
 mv -T "$APP.nuevo" "$APP"
 
-echo "==> 6/9 Instalando unidad systemd"
+echo "==> 6/12 Instalando unidad systemd"
 install -m 644 "$UNIT_DRAFT" "$SRV"
 systemctl daemon-reload
 systemd-analyze verify "$SRV"
 
-echo "==> 6b/9 Instalando timers auxiliares (purga de privacidad, monitoreo de salud)"
+echo "==> 7/12 Instalando timers auxiliares (purga de privacidad, monitoreo de salud)"
 install -m 644 "$(dirname "$0")/scoutcuts-purga.service" /etc/systemd/system/scoutcuts-purga.service
 install -m 644 "$(dirname "$0")/scoutcuts-purga.timer"   /etc/systemd/system/scoutcuts-purga.timer
 install -m 644 "$(dirname "$0")/scoutcuts-monitor.service" /etc/systemd/system/scoutcuts-monitor.service
@@ -124,13 +124,13 @@ install -m 644 "$(dirname "$0")/scoutcuts-monitor.timer"   /etc/systemd/system/s
 systemctl daemon-reload
 systemctl enable --now scoutcuts-purga.timer scoutcuts-monitor.timer
 
-echo "==> 7/9 Arrancando (o reiniciando) el servicio con la release nueva"
+echo "==> 8/12 Arrancando (o reiniciando) el servicio con la release nueva"
 systemctl enable scoutcuts.service
 systemctl restart scoutcuts.service
 sleep 2
 systemctl --no-pager --full status scoutcuts.service | head -20
 
-echo "==> 8/9 Prueba de salud local (loopback), bloqueante"
+echo "==> 9/12 Prueba de salud local (loopback), bloqueante"
 CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:8010/salud)
 if [ "$CODE" != "200" ]; then
   echo "    /salud local respondio $CODE, se esperaba 200. Abortando antes de tocar nginx." >&2
@@ -138,12 +138,12 @@ if [ "$CODE" != "200" ]; then
 fi
 echo "    /salud local = $CODE"
 
-echo "==> 9/10 Instalando nginx y recargando"
+echo "==> 10/12 Instalando nginx y recargando"
 cp "$NGINX_DRAFT" /etc/nginx/sites-available/scoutcuts
 nginx -t
 systemctl reload nginx
 
-echo "==> 10/10 Publicando la PWA (web/) en /var/www/scoutcuts"
+echo "==> 11/12 Publicando la PWA (web/) en /var/www/scoutcuts"
 if [ ! -d "$RELEASE/web" ]; then
   echo "    No hay carpeta web/ en la release; se deja /var/www/scoutcuts como estaba." >&2
 else
@@ -156,6 +156,9 @@ else
   find /var/www/scoutcuts -type f -exec chmod 644 {} +
   echo "    PWA publicada: $(find /var/www/scoutcuts -maxdepth 1 -type f | wc -l) archivos en la raiz"
 fi
+
+echo "==> 12/12 Limpiando releases viejas (conserva las ultimas 5 + la activa)"
+bash "$(dirname "$0")/limpiar-releases-viejas.sh" 5 || true
 
 echo "Listo. Verifica desde fuera con: bash verificar-despliegue.sh"
 echo "Releases anteriores en $RELEASES/ quedan para rollback manual (symlink)."

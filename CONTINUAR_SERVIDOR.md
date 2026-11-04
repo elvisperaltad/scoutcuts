@@ -111,9 +111,15 @@ Antes de recargar: `ssh precios 'nginx -t && systemctl reload nginx'`.
 - `/opt/cortador-control/app` -> symlink a la release activa en
   `/opt/cortador-control/releases-app/<timestamp>/` (código + venv,
   propiedad `root`, de solo lectura para `cortador`).
-- `/opt/cortador-control/releases-app/` guarda TODAS las releases desplegadas;
-  un rollback manual es cambiar el symlink a una release anterior y
-  `systemctl restart scoutcuts`.
+- `/opt/cortador-control/releases-app/` guarda las ultimas 5 releases
+  desplegadas MAS la activa, nunca mas (ver `limpiar-releases-viejas.sh`,
+  2026-11-04: antes guardaba TODAS sin limite, ~318MB cada una, y agoto
+  2.2GB solo en un dia de desarrollo activo con despliegues frecuentes
+  en un disco de 23GB -- se corrigio antes de que se convirtiera en un
+  incidente real). Rollback manual a una de esas 5: cambiar el symlink
+  `app` y `systemctl restart scoutcuts`. Para volver a una release MAS
+  vieja que las 5 conservadas, hay que re-desplegar desde el commit de
+  git correspondiente (ya no existe la carpeta).
 - `/opt/cortador-control/datos/trabajos/<id>/` — carpeta por trabajo subido,
   propiedad `cortador:entrega`, modo `2750` (setgid: todo lo que se cree
   adentro hereda el grupo `entrega` automáticamente).
@@ -325,7 +331,8 @@ En el proyecto local y copiados al servidor bajo `/opt/cortador-control/docs/`:
   `despliegue/desplegar.sh`, `despliegue/verificar-despliegue.sh`,
   `despliegue/scoutcuts-purga.service`, `despliegue/scoutcuts-purga.timer`,
   `despliegue/scoutcuts-monitor.service`, `despliegue/scoutcuts-monitor.timer`,
-  `despliegue/monitor-salud.sh`, `despliegue/rotar-token-qa.sh`.
+  `despliegue/monitor-salud.sh`, `despliegue/rotar-token-qa.sh`,
+  `despliegue/limpiar-releases-viejas.sh`.
 
 ## Qué no hacer
 
