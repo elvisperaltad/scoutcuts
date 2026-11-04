@@ -5,6 +5,15 @@ Description=ScoutCuts: purga de trabajos vencidos (independiente de que lleguen 
 # descargar podria quedar en disco mucho mas de max_edad_horas. Dado que hay
 # menores de edad en el material, la purga no puede depender de que alguien
 # suba un video: este timer la dispara igual todos los dias.
+#
+# La zona de entrenamiento QA (ZonaEntrenamiento.limpiar_vencidos) tiene la
+# misma debilidad y la misma regla de menores de edad: la API solo la llama
+# al recibir una subida NUEVA en esa disciplina (ver api.py,
+# entrenamiento_subir). Si el QA sube un video de practica y nunca completa
+# el marcado, y nadie vuelve a subir nada a esa misma disciplina, ese video
+# se quedaria en disco sin limite de tiempo -- el mismo problema que este
+# timer existe para evitar en produccion. Por eso corre las dos purgas, en
+# la misma corrida diaria, nunca solo una.
 After=network.target
 
 [Service]
@@ -18,6 +27,11 @@ WorkingDirectory=/opt/cortador-control/app
 # vez de SCOUTCUTS_MAX_EDAD_HORAS, para no borrar material antes de que
 # alguien lo revise -- pero sigue vencido igual pasado ese plazo.
 ExecStart=/opt/cortador-control/app/.venv/bin/python -c "import os; from cortador.servidor import almacen as alm; a = alm.Almacen(os.environ['SCOUTCUTS_DATOS']); list(a.purgar(float(os.environ.get('SCOUTCUTS_MAX_EDAD_HORAS', '24')), max_edad_revision_horas=float(os.environ.get('SCOUTCUTS_MAX_EDAD_REVISION_HORAS', '168'))))"
+# Zona de entrenamiento QA: solo corre si SCOUTCUTS_ENTRENAMIENTO esta
+# configurada (igual que la API: sin ella, no hay zona de entrenamiento que
+# purgar). SCOUTCUTS_MAX_EDAD_ENTRENAMIENTO_HORAS comparte nombre y default
+# (24h) con lo que ya lee api.py al construir Config.
+ExecStart=/opt/cortador-control/app/.venv/bin/python -c "import os, sys; raiz = os.environ.get('SCOUTCUTS_ENTRENAMIENTO'); sys.exit(0) if not raiz else None; from cortador.servidor.entrenamiento import ZonaEntrenamiento; ZonaEntrenamiento(raiz).limpiar_vencidos(float(os.environ.get('SCOUTCUTS_MAX_EDAD_ENTRENAMIENTO_HORAS', '24')))"
 
 # Mismo endurecimiento que el servicio principal: solo puede tocar sus
 # propios datos, nunca el resto del sistema.

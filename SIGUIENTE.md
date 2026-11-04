@@ -1,12 +1,23 @@
 # Por dónde seguir
 
-## Servidor de usuarios y descargas designado
+> **Aviso (2026-11-05): este documento quedó desactualizado en su primera
+> sección.** Describe un plan de servidor que, para cuando se escribió, era
+> futuro — pero el servidor YA ESTÁ DESPLEGADO Y EN PRODUCCIÓN desde hace
+> semanas (`144.202.57.21`, `scoutcuts.com`), incluyendo la zona de
+> entrenamiento QA multi-disciplina (defensa/bateo/pitcheo/catcher). La
+> fuente de verdad del estado del servidor es **`CONTINUAR_SERVIDOR.md`**;
+> el día a día con el porqué de cada decisión está en **`BITACORA.md`**. El
+> resto de este archivo (detección de swings, calibración, pares
+> crudo/montaje pendientes) sigue vigente como lista de trabajo pendiente
+> del motor de visión, no del servidor.
 
-Se usará `144.202.57.21`, compartido con CanastaRD. La inspección de solo lectura confirmó
-recursos suficientes para una API pequeña, pero no para procesamiento de video. El nuevo
-servicio debe aislarse de la aplicación existente, usar otra base/usuario PostgreSQL y otro
-puerto interno. Arquitectura, seguridad, retención y orden de implementación:
-[`SERVIDOR_CONTROL.md`](SERVIDOR_CONTROL.md). No se ha modificado todavía el servidor.
+## Servidor de usuarios y descargas: YA DESPLEGADO (ver CONTINUAR_SERVIDOR.md)
+
+Sección histórica, conservada por contexto. En su momento se planeó usar
+`144.202.57.21`, compartido con CanastaRD, aislando el servicio en su propia
+base/usuario PostgreSQL y puerto interno (arquitectura original en
+[`SERVIDOR_CONTROL.md`](SERVIDOR_CONTROL.md)). Ese plan ya se ejecutó: el
+estado real, verificado en vivo, está en `CONTINUAR_SERVIDOR.md`.
 
 ## Runtime portátil construido; falta validación del QA
 

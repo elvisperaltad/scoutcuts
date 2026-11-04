@@ -107,6 +107,34 @@ if command -v systemctl >/dev/null 2>&1; then
 fi
 
 echo
+echo "== Zona de entrenamiento QA (scoutcuts.com/entrenamiento) =="
+esperar "pagina de entrenamiento"        "200" "$(code https://scoutcuts.com/entrenamiento/)"
+esperar "entrenamiento sin token"        "401" "$(code "$API/v1/entrenamiento/disciplinas")"
+esperar "entrenamiento con token QA (produccion, debe rechazar)" "401" \
+  "$(code -H "Authorization: Bearer ${TOKEN:-}" "$API/v1/entrenamiento/disciplinas")"
+
+if [ -z "${TOKEN_ENTRENAMIENTO:-}" ]; then
+  echo
+  echo "TOKEN_ENTRENAMIENTO no definido: omito las pruebas autenticadas de la zona de entrenamiento."
+  echo "(no es TOKEN: son credenciales distintas y deliberadamente aisladas, ver CONTINUAR_SERVIDOR.md)"
+else
+  RESP_DISC=$(curl -s -H "Authorization: Bearer $TOKEN_ENTRENAMIENTO" "$API/v1/entrenamiento/disciplinas")
+  N_DISC=$(printf '%s' "$RESP_DISC" | python3 -c 'import sys,json
+try:
+    print(len(json.load(sys.stdin).get("disciplinas", [])))
+except Exception:
+    print(0)' 2>/dev/null)
+  if [ "${N_DISC:-0}" -ge 4 ]; then
+    echo "  OK   disciplinas registradas con token valido     -> $N_DISC"
+  else
+    echo "  FAIL disciplinas registradas con token valido     -> $N_DISC (se esperaban al menos 4)"
+    FALLOS=$((FALLOS + 1))
+  fi
+  esperar "entrenamiento con token de produccion (debe rechazar)" "401" \
+    "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer ${TOKEN:-}" "$API/v1/entrenamiento/disciplinas")"
+fi
+
+echo
 if [ "$FALLOS" -eq 0 ]; then
   echo "Despliegue verificado: todas las pruebas pasaron."
   exit 0
