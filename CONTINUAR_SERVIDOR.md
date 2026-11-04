@@ -226,8 +226,27 @@ funcione. Cópialos a mano a `<release>/perfiles/` (propiedad `root:cortador`,
    `scoutcuts.service`, en un hilo daemon aparte).
 3. **Rotación/revocación del token QA** si se filtra. Por ahora, regenerarlo
    a mano en `/etc/cortador-control/app.env` y reiniciar el servicio.
-4. **Monitoreo/alertas** si el servicio se cae (`systemd` reinicia solo, pero
-   nadie se entera si queda en `Restart` loop).
+4. **Monitoreo/alertas — IMPLEMENTADO (2026-11-04).** `despliegue/monitor-salud.sh`
+   revisa cada 5 minutos (`scoutcuts-monitor.timer`) tres cosas en orden:
+   `scoutcuts.service` activo, `nginx` activo, y la ruta PUBLICA real
+   `https://api.scoutcuts.com/salud` responde 200 (no loopback: asi
+   tambien detecta DNS/TLS roto, que loopback nunca veria). Alerta por
+   Telegram SOLO en la transicion de estado (ok->fallo, fallo->ok), nunca
+   en cada corrida, para no inundar el chat del admin; el estado anterior
+   se guarda en `SCOUTCUTS_DATOS/monitor_estado` (texto plano). Sin fallo
+   no hay alerta ni ruido. 4 pruebas nuevas (`tests/despliegue/
+   test_monitor_salud.py`), todas contra un servidor HTTP falso real, no
+   mocks de systemctl. `desplegar.sh` ahora instala y habilita este timer
+   y el de purga automaticamente (antes `scoutcuts-purga` se instalaba a
+   mano, fuera del pipeline — ya no).
+   **PENDIENTE para que la alerta llegue de verdad, no solo quede en
+   journalctl:** (a) el mismo bot de Telegram del punto 2 debe existir
+   (crear con @BotFather, `SCOUTCUTS_TELEGRAM_BOT_TOKEN`); (b) fijar
+   `SCOUTCUTS_TELEGRAM_ADMIN_ID` en `/etc/cortador-control/app.env` con el
+   `chat_id` de Telegram del propietario (NO el de un scout), obtenible
+   escribiendole a `@userinfobot`. Sin esas dos variables, el monitoreo
+   sigue corriendo y deja registro en `journalctl -u scoutcuts-monitor`,
+   pero nadie se entera por chat hasta que entre a revisar el log a mano.
 5. ~~**PWA real** del lado del cliente (la API ya soporta el flujo completo).~~
    **HECHA Y DESPLEGADA (2026-11-04).** `web/` (HTML/CSS/JS vanilla, sin build):
    login por `codigo_acceso` (nuevo campo en `Usuario`, generado siempre al
@@ -292,7 +311,9 @@ En el proyecto local y copiados al servidor bajo `/opt/cortador-control/docs/`:
   por IP en `/v1/trabajos`), `despliegue/nginx-scoutcuts-tls.conf`,
   `despliegue/scoutcuts.service` (fija `TMPDIR` a disco real, no a tmpfs),
   `despliegue/desplegar.sh`, `despliegue/verificar-despliegue.sh`,
-  `despliegue/scoutcuts-purga.service`, `despliegue/scoutcuts-purga.timer`.
+  `despliegue/scoutcuts-purga.service`, `despliegue/scoutcuts-purga.timer`,
+  `despliegue/scoutcuts-monitor.service`, `despliegue/scoutcuts-monitor.timer`,
+  `despliegue/monitor-salud.sh`.
 
 ## Qué no hacer
 

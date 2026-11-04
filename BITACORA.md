@@ -1,5 +1,54 @@
 # Bitácora
 
+## 2026-11-04 (tarde, continuacion) · Monitoreo de salud con alerta por Telegram
+
+El usuario pidio "continua el desarrollo" sin especificar que, asi que tome el
+siguiente punto avanzable de la lista de pendientes de CONTINUAR_SERVIDOR.md sin
+depender de una decision externa suya: el punto 4, monitoreo/alertas. (El punto 1
+depende de decidir licenciamiento; el punto 2, de que el usuario cree el bot con
+@BotFather; el punto 7, de que el cliente defina categorias de pitcheo/catcher.)
+
+`systemd` ya reinicia `scoutcuts.service` solo si cae (`Restart=on-failure`), pero
+nadie se entera si queda en un loop de reinicios, o si nginx/TLS/DNS se rompe sin
+que el proceso de la API lo note. Escribi `despliegue/monitor-salud.sh`: revisa
+`scoutcuts.service` activo, `nginx` activo, y la ruta PUBLICA real
+`https://api.scoutcuts.com/salud` (nunca loopback, para que tambien detecte
+DNS/TLS roto). Alerta por Telegram SOLO en la transicion de estado (ok->fallo,
+fallo->ok), nunca en cada corrida, guardando el ultimo estado conocido en un
+archivo de texto plano -- igual de simple que el resto de la infraestructura de
+este VPS de un nucleo. Reusa el MISMO bot de Telegram del canal de scouts (no crea
+uno nuevo), separado solo por un `chat_id` de administrador distinto.
+
+TDD con un servidor HTTP falso real (no mocks de systemctl, que no tiene sentido
+fuera de un host systemd real): 4 pruebas en `tests/despliegue/test_monitor_salud.py`,
+cubriendo sano, fallo real detectado, alerta solo en la primera transicion (no en
+la segunda corrida con el mismo fallo), y recuperacion. Encontre y corregi dos bugs
+propios en el camino: el script llamaba a `systemctl` sin comprobar que existiera
+(revienta en cualquier maquina sin systemd, incluidas las pruebas locales en
+Windows), y mi primera prueba de "alerta solo en la transicion" reutilizaba la
+misma clase de handler HTTP para dos servidores falsos distintos, pisando el
+estado del primero con el del segundo -- la reescribi para no necesitar un
+servidor falso de Telegram y verificar el guard de transicion por el mensaje de
+log, que es lo que realmente importa.
+
+Cree tambien `scoutcuts-monitor.service`/`.timer` (cada 5 minutos) y conecte
+ambos timers (purga y monitoreo) al pipeline de `desplegar.sh`: antes
+`scoutcuts-purga.timer` se habia instalado a mano, fuera del script, lo cual
+significaba que un despliegue futuro desde cero se le olvidaria. Añadi tambien
+una verificacion de ambos timers a `verificar-despliegue.sh` (solo corre si hay
+`systemctl` disponible, para no romper verificaciones remotas sin acceso al
+servidor). Suite completa: 273/273 (269 + 4 nuevas).
+
+Desplegado con `desplegar.sh` oficial; verificado en produccion que ambos timers
+quedan `active` tras el despliegue. El monitoreo YA esta corriendo y detectando
+fallos reales, pero la alerta por Telegram queda muda hasta que el usuario cree el
+bot (@BotFather, el mismo pendiente de siempre) y me de su `chat_id` de Telegram
+para fijar `SCOUTCUTS_TELEGRAM_ADMIN_ID` -- documentado explicitamente como
+pendiente en `CONTINUAR_SERVIDOR.md`, para que nadie asuma que ya avisa cuando en
+realidad solo deja rastro en `journalctl`.
+
+Commit y push a GitHub, verificado contra el remoto.
+
 ## 2026-11-04 (tarde) · Gracia extendida de purga para videos pendientes de revision
 
 El usuario pregunto como entrenar y mejorar defensa, pitcheo y catcher usando videos subidos
