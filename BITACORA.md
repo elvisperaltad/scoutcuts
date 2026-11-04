@@ -1,5 +1,87 @@
 # Bitácora
 
+## 2026-11-04 (noche) · Primer modelo real de defensa: pequeno, incremental, nunca guarda video
+
+El usuario pidio que el QA pudiera "entrenar" el sistema con sus videos. La
+respuesta honesta previa (ver entrada anterior de hoy) era que nada se
+entrena: bateo son reglas fijas, defensa es marcado 100% manual. El usuario
+insistio pidiendo un modelo pequeno "aunque sea", y corrigio una
+preocupacion mia valida: tenia razon en que NO hace falta guardar el video
+para que el modelo aprenda, solo extraerle los numeros antes de borrarlo --
+eso respeta la regla de borrado automatico (menores de edad), no choca con
+ella.
+
+Construido `src/cortador/defensa_ml.py`:
+
+- `extraer_caracteristicas(video, inicio, tiro)`: lee los fotogramas de una
+  ventana ya marcada por una persona y devuelve SOLO 3 numeros -- duracion,
+  fuerza del pico de movimiento (diferencia entre fotogramas), y hacia que
+  lado del encuadre se concentro ese movimiento (0.0 izquierda, 1.0
+  derecha, ponderado por intensidad de movimiento en cada columna). Nunca
+  retiene un fotograma ni una ruta de video.
+- `Dataset`: acumula esos 3 numeros por categoria (adelante/derecha/
+  izquierda) en `modelos/dataset_defensa.json`. Cada video marcado nuevo
+  SUMA ejemplos al dataset existente, nunca lo reemplaza -- asi es como
+  mejora con cada entrega, verificado con una prueba explicita que calibra
+  con un video, agrega un segundo, y confirma que el total es la suma de
+  ambos (no el reemplazo por el ultimo).
+- `ModeloDefensa`: calibra media y desviacion por categoria (el equivalente
+  simple de una gaussiana naive) en cuanto hay al menos 1 ejemplo de cada
+  una de las 3 categorias. Deliberadamente sin redes neuronales ni
+  dependencias nuevas (torch/ultralytics ya existen como extra opcional
+  `cnn` del proyecto pero no se tocaron): con 1-2 videos de dato, cualquier
+  modelo mas complejo memorizaria ruido, no aprenderia un patron. Con 1
+  solo ejemplo por categoria no hay forma de medir dispersion real, asi que
+  se usa una desviacion de reserva generosa en vez de fingir una de cero
+  (eso haria la confianza explotar con cualquier variacion minima).
+  `clasificar()` devuelve la categoria mas cercana Y una confianza que cae
+  cuando dos categorias quedan igual de cerca -- el sistema debe preferir
+  decir "no estoy seguro" en vez de inventar una categoria segura que no
+  lo es.
+- Conectado al comando existente `cortador defensa` (el punto donde una
+  persona ya exporta el video elegido): cada exportacion ahora TAMBIEN
+  actualiza el dataset y recalibra el modelo, antes de que el video se
+  descarte. Flag `--sin-entrenar` para desactivarlo puntualmente. Si el
+  entrenamiento falla por cualquier razon, la exportacion al cliente sigue
+  funcionando igual -- nunca se bloquea una entrega real por un fallo de
+  aprendizaje.
+
+TDD real: 15 pruebas en `tests/test_defensa_ml.py`, incluido un pipeline
+completo de punta a punta contra VIDEO REAL (no datos inventados a mano):
+OpenCV genera tres videos sinteticos con un cuadrado moviendose a cada
+lado del encuadre, se extraen caracteristicas de cada uno, se calibra un
+modelo, y se clasifica correctamente un CUARTO video (moviendose a la
+derecha) que el modelo nunca vio al calibrar. Mas 2 pruebas en
+`tests/test_defensa.py` que verifican la integracion con el CLI usando un
+quinto video real generado con OpenCV, confirmando que `--sin-entrenar` de
+verdad desactiva el entrenamiento (con un mock que hace fallar la prueba
+si llega a llamarse).
+
+Corrida real contra el UNICO video marcado que existe de verdad
+(`Video/Luis Abreu/S1440022.MP4`, 6 repeticiones ya revisadas por una
+persona) para medir honestamente, no inventar un numero: el modelo
+calibrado con esos 6 ejemplos clasifica bien "derecha" e "izquierda" (4/4)
+pero confunde "adelante" con "izquierda" en 2/4 casos -- y en esos 2
+errores la confianza que devuelve es baja (0.20 y 0.39) contra 0.55-0.76 en
+los aciertos, exactamente el comportamiento buscado: dudar cuando duda. Con
+un solo video no hay patron generalizable todavia; mejorara solo con mas
+videos marcados, que es la naturaleza honesta de "pequeno e incremental".
+
+Por decision explicita del usuario, `modelos/dataset_defensa.json` y
+`modelos/modelo_defensa.json` se versionan en git (son JSON chiquitos sin
+ningun dato de video, nunca privacidad) para que no se pierdan entre
+maquinas y el segundo desarrollador los tenga tambien.
+
+PENDIENTE real, no de codigo: esto SOLO corre hoy cuando alguien ejecuta
+`cortador defensa` a mano en esta maquina. No esta conectado a la web ni al
+bot de Telegram, no se ha desplegado al servidor, y no clasifica nada en
+produccion todavia -- es la base sobre la que construir eso, no la
+funcion completa. Pitcheo y catcher siguen sin un solo ejemplo marcado, asi
+que el mismo enfoque no se les puede aplicar todavia.
+
+Suite completa: 296 passed, 2 skipped (motivo documentado desde la entrada
+anterior).
+
 ## 2026-11-04 (tarde, tercera continuacion) · Limpieza automatica de releases viejas (riesgo de disco encontrado y corregido)
 
 Tercer "sigue" consecutivo. Esta vez, en vez de seguir la lista escrita de

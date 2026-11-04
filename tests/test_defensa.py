@@ -136,3 +136,68 @@ def test_cli_defensa_devuelve_uno_ante_manifiesto_invalido(tmp_path, capsys):
     ])
     assert codigo == 1
     assert "error:" in capsys.readouterr().err
+
+
+def test_cli_defensa_actualiza_el_modelo_con_un_video_real(tmp_path, monkeypatch, capsys):
+    """El video en este test SI es real (no bytes inventados): asi se
+    comprueba la ruta completa, no solo que el codigo no explote con un
+    mock."""
+    import cv2
+    import numpy as np
+
+    video = tmp_path / "defensa.mp4"
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    escritor = cv2.VideoWriter(str(video), fourcc, 20.0, (320, 240))
+    for i in range(120):
+        frame = np.zeros((240, 320, 3), dtype=np.uint8)
+        frame[90:150, (i % 280):(i % 280) + 40] = 255
+        escritor.write(frame)
+    escritor.release()
+
+    marcas = _guardar(tmp_path, _datos(video.name))
+    salida = tmp_path / "seleccion.mp4"
+
+    def exportar(video_arg, tramos_arg, salida_arg):
+        return salida_arg
+
+    monkeypatch.setattr(cli.compactar_mod, "exportar", exportar)
+    ruta_dataset = tmp_path / "dataset.json"
+    ruta_modelo = tmp_path / "modelo.json"
+    monkeypatch.setattr(cli.defensa_ml_mod, "ruta_dataset_por_defecto", lambda: ruta_dataset)
+    monkeypatch.setattr(cli.defensa_ml_mod, "ruta_modelo_por_defecto", lambda: ruta_modelo)
+
+    codigo = cli.main([
+        "defensa", str(video), "--marcas", str(marcas), "--salida", str(salida),
+    ])
+
+    assert codigo == 0
+    assert ruta_dataset.exists(), "el dataset de defensa debio actualizarse"
+    salida_impresa = capsys.readouterr().out
+    assert "Modelo de defensa:" in salida_impresa
+
+
+def test_cli_defensa_sin_entrenar_no_toca_el_modelo(tmp_path, monkeypatch):
+    video = tmp_path / "defensa.mp4"
+    video.write_bytes(b"video")
+    marcas = _guardar(tmp_path, _datos(video.name))
+    salida = tmp_path / "seleccion.mp4"
+
+    def exportar(video_arg, tramos_arg, salida_arg):
+        return salida_arg
+
+    monkeypatch.setattr(cli.compactar_mod, "exportar", exportar)
+    llamado = {"veces": 0}
+
+    def falla_si_se_llama(*args, **kwargs):
+        llamado["veces"] += 1
+        raise AssertionError("no deberia llamarse con --sin-entrenar")
+
+    monkeypatch.setattr(cli.defensa_ml_mod, "actualizar_desde_manifiesto", falla_si_se_llama)
+
+    codigo = cli.main([
+        "defensa", str(video), "--marcas", str(marcas), "--salida", str(salida),
+        "--sin-entrenar",
+    ])
+
+    assert codigo == 0
+    assert llamado["veces"] == 0

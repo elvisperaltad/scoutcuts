@@ -291,21 +291,53 @@ funcione. Cópialos a mano a `<release>/perfiles/` (propiedad `root:cortador`,
    borre. Motivo: un video de defensa/pitcheo/catcher subido por la PWA cae
    hoy en ese estado (ver punto 7) y se borraria en 24h sin que nadie lo
    revisara.**
-7. **Deteccion automatica de defensa, pitcheo y catcher — NO EXISTE.** Solo
-   "bateo" tiene detector automatico (reglas fijas de movimiento, no un
-   modelo que aprenda de mas datos). Defensa existe SOLO como marcado manual
-   humano sobre un video ya grabado (`cortador defensa`, ver `README.md`
-   seccion "Flujo de defensa"); la web/PWA ni siquiera expone ese flujo
-   todavia. Pitcheo y catcher no tienen absolutamente nada: ni categorias
-   definidas, ni reglas de que cuenta como jugada completa, ni deteccion, ni
-   herramienta de marcado. En el servidor solo existen 3 perfiles de camara
+7. **Deteccion automatica de defensa — MODELO PEQUENO INCREMENTAL, RECIEN
+   CREADO (2026-11-04), SIN DESPLEGAR, SIN CONECTAR A LA WEB/BOT TODAVIA.**
+   `src/cortador/defensa_ml.py`: cada vez que una persona marca un video con
+   `cortador defensa` (manifiesto `.defensa.json` -> 6 repeticiones), el
+   comando extrae 3 numeros por repeticion (duracion, fuerza del pico de
+   movimiento, hacia que lado del encuadre) y los SUMA a un dataset
+   acumulado en `modelos/dataset_defensa.json` (nunca el video ni un
+   fotograma -- se puede borrar el video de inmediato despues sin perder
+   nada que el modelo necesite, compatible con la regla de borrado
+   automatico por menores de edad). Con al menos 1 ejemplo de las 3
+   categorias (adelante/derecha/izquierda) calibra `modelo_defensa.json`
+   (medias y desviaciones por categoria, sin redes neuronales ni
+   dependencias pesadas: con 1-2 videos de dato, algo mas complejo
+   memorizaria ruido en vez de aprender un patron). El modelo mejora con
+   cada entrega nueva porque el dataset se acumula, nunca se reemplaza.
+   Para apagarlo en una entrega puntual: `cortador defensa ... --sin-entrenar`.
+   Si el entrenamiento falla por cualquier razon, la exportacion del video
+   al cliente sigue funcionando igual -- nunca se bloquea una entrega por
+   un fallo de aprendizaje.
+   **Medicion real y honesta, no un numero inventado:** calibrado con el
+   UNICO video marcado que existe (`Video/Luis Abreu/S1440022.MP4`, 6
+   repeticiones), el modelo clasifica bien "derecha" e "izquierda" (4/4)
+   pero confunde "adelante" con "izquierda" en 2/4 casos -- y en esos 2
+   errores la confianza que devuelve es baja (0.20 y 0.39) contra 0.55-0.76
+   en los aciertos, que es el comportamiento buscado: dudar cuando duda, en
+   vez de inventar una categoria segura que no lo es. Con 1 video no hay
+   patron generalizable todavia; mejorara solo con mas videos marcados.
+   15 pruebas nuevas (`tests/test_defensa_ml.py`), incluyendo un pipeline
+   completo contra video real sintetico (OpenCV genera un video con
+   movimiento real, se extraen caracteristicas, se calibra, y se clasifica
+   un CUARTO video nunca visto por el modelo). Mas 2 pruebas en
+   `tests/test_defensa.py` para la integracion con el comando CLI.
+   PENDIENTE: no esta conectado a la web ni al bot de Telegram (solo al
+   comando `cortador defensa` que ya usa una persona a mano); no se ha
+   desplegado al servidor; no clasifica nada todavia en produccion, solo
+   acumula dataset local cuando alguien corre el comando en esta maquina.
+8. **Pitcheo y catcher — SIGUE SIN EXISTIR.** Ni categorias definidas, ni
+   reglas de que cuenta como jugada completa, ni un solo ejemplo marcado:
+   el enfoque de arriba (extraer numeros, nunca guardar el video) se podria
+   aplicar igual aqui en cuanto haya 1 ejemplo marcado de cada categoria,
+   pero no hay ninguno. En el servidor solo existen 3 perfiles de camara
    manuales ligados a un video especifico (`academia_video1.json`,
-   `axel_img_0682.json`, `luis_abreu_s1440015.json`), no hay ningun "modelo"
-   generalizable que mejore con mas videos subidos.
-   Antes de construir nada de esto hace falta que el cliente defina, igual
-   que se hizo con defensa: cuantos clips por entrega, que cuenta como jugada
-   completa, desde que angulo de camara se grabara cada una. Sin eso,
-   cualquier deteccion automatica que se escriba estaria adivinando el
+   `axel_img_0682.json`, `luis_abreu_s1440015.json`).
+   Antes de construir nada de esto hace falta que el cliente defina:
+   cuantos clips por entrega, que cuenta como jugada completa, desde que
+   angulo de camara se grabara cada una. Sin eso, cualquier deteccion
+   automatica que se escriba estaria adivinando el
    criterio del cliente.
 
 ## Documentos relacionados
@@ -325,6 +357,10 @@ En el proyecto local y copiados al servidor bajo `/opt/cortador-control/docs/`:
 - `DESARROLLO_REMOTO.md`: snapshot Git editable para el QA, separado de producción.
 - `ACCESO_MOVIL.md`: decisión PWA/servidor y benchmarks.
 - `ENTREGA_QA.md`, `ANALISIS_QA.md`, `README.md`, `SIGUIENTE.md`, `PROBAR.md`, `BITACORA.md`.
+- `src/cortador/defensa_ml.py`, `modelos/dataset_defensa.json`,
+  `modelos/modelo_defensa.json`: modelo pequeno incremental de defensa
+  (ver punto 7 de "Lo que falta"). Versionados en git por decision
+  explicita del usuario: son JSON sin ningun dato de video.
 - `despliegue/nginx-scoutcuts.conf` (incluye `limit_req_zone`/`limit_conn_zone`
   por IP en `/v1/trabajos`), `despliegue/nginx-scoutcuts-tls.conf`,
   `despliegue/scoutcuts.service` (fija `TMPDIR` a disco real, no a tmpfs),

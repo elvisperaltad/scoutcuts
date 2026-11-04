@@ -11,6 +11,7 @@ from pathlib import Path
 from . import agente as agente_mod
 from . import compactar as compactar_mod
 from . import defensa as defensa_mod
+from . import defensa_ml as defensa_ml_mod
 from . import eventos as eventos_mod
 from . import ffmpeg
 from .canal import analizar, cortar
@@ -192,6 +193,17 @@ def cmd_defensa(args: argparse.Namespace) -> int:
     salida = compactar_mod.exportar(args.video, tramos, args.salida)
     print(f"6 repeticiones defensivas revisadas, {compactar_mod.duracion_total(tramos):.1f}s")
     print(f"Escrito en {salida}")
+
+    if not args.sin_entrenar:
+        try:
+            _, modelo = defensa_ml_mod.actualizar_desde_manifiesto(args.video, manifiesto)
+        except Exception as err:  # el entrenamiento nunca debe tumbar la entrega
+            print(f"Aviso: no se pudo actualizar el modelo de defensa ({err}).",
+                  file=sys.stderr)
+        else:
+            total = modelo.total_ejemplos if modelo else 0
+            estado = "calibrado" if modelo else "esperando ejemplos de las 3 categorias"
+            print(f"Modelo de defensa: {estado} ({total} ejemplos acumulados en total)")
     return 0
 
 
@@ -397,6 +409,8 @@ def construir_parser() -> argparse.ArgumentParser:
                        help="margen antes de la preparacion marcada")
     p_def.add_argument("--despues-tiro", type=float, default=defensa_mod.DESPUES_TIRO,
                        help="margen corto despues del tiro")
+    p_def.add_argument("--sin-entrenar", action="store_true",
+                       help="no actualizar el modelo de defensa con este manifiesto")
     p_def.set_defaults(func=cmd_defensa)
 
     p_age = sub.add_parser(

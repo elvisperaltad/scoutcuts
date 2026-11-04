@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "total_ejemplos": 6,
+  "perfiles": {
+    "adelante": {
+      "media_duracion": 4.499999999999998,
+      "desv_duracion": 0.141421356237309,
+      "media_fuerza": 12.927331814236112,
+      "desv_fuerza": 0.41745540380714335,
+      "media_centro_x": 0.4952292041421209,
+      "desv_centro_x": 0.005552531270164875,
+      "n_ejemplos": 2
+    },
+    "derecha": {
+      "media_duracion": 6.100000000000001,
+      "desv_duracion": 0.42426406871193456,
+      "media_fuerza": 22.965380316840278,
+      "desv_fuerza": 0.5152541948921537,
+      "media_centro_x": 0.4831657252765601,
+      "desv_centro_x": 0.00790945120804916,
+      "n_ejemplos": 2
+    },
+    "izquierda": {
+      "media_duracion": 4.199999999999996,
+      "desv_duracion": 1.2727922061357835,
+      "media_fuerza": 12.119856228298612,
+      "desv_fuerza": 2.6012928563488407,
+      "media_centro_x": 0.49033443212763134,
+      "desv_centro_x": 0.011327461189132795,
+      "n_ejemplos": 2
+    }
+  }
+}
