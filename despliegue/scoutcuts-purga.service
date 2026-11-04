@@ -13,7 +13,11 @@ User=cortador
 Group=cortador
 EnvironmentFile=/etc/cortador-control/app.env
 WorkingDirectory=/opt/cortador-control/app
-ExecStart=/opt/cortador-control/app/.venv/bin/python -c "import os; from cortador.servidor import almacen as alm; a = alm.Almacen(os.environ['SCOUTCUTS_DATOS']); list(a.purgar(float(os.environ.get('SCOUTCUTS_MAX_EDAD_HORAS', '24'))))"
+# PENDIENTE_REVISION (defensa/pitcheo/catcher subidos por la web sin
+# deteccion automatica todavia) usa SCOUTCUTS_MAX_EDAD_REVISION_HORAS en
+# vez de SCOUTCUTS_MAX_EDAD_HORAS, para no borrar material antes de que
+# alguien lo revise -- pero sigue vencido igual pasado ese plazo.
+ExecStart=/opt/cortador-control/app/.venv/bin/python -c "import os; from cortador.servidor import almacen as alm; a = alm.Almacen(os.environ['SCOUTCUTS_DATOS']); list(a.purgar(float(os.environ.get('SCOUTCUTS_MAX_EDAD_HORAS', '24')), max_edad_revision_horas=float(os.environ.get('SCOUTCUTS_MAX_EDAD_REVISION_HORAS', '168'))))"
 
 # Mismo endurecimiento que el servicio principal: solo puede tocar sus
 # propios datos, nunca el resto del sistema.

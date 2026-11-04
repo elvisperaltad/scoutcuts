@@ -225,11 +225,27 @@ class Almacen:
         self.guardar_estado(trabajo)
         return trabajo
 
-    def purgar(self, max_edad_horas: float) -> Iterator[str]:
-        """Borra trabajos vencidos y las entradas ya entregadas."""
+    def purgar(self, max_edad_horas: float, *,
+              max_edad_revision_horas: float | None = None) -> Iterator[str]:
+        """Borra trabajos vencidos y las entradas ya entregadas.
+
+        `max_edad_revision_horas` da una gracia extendida solo a los
+        trabajos en `PENDIENTE_REVISION`: son videos (p. ej. defensa,
+        pitcheo o catcher subidos por la web, que todavia no tienen
+        deteccion automatica) que un humano aun no ha revisado. Sin esto,
+        la purga normal de privacidad los borraria en 24h junto con el
+        resto, perdiendo material que nadie llego a ver. Si no se pasa
+        (compatibilidad con la API publica y el bot, que llaman a purgar
+        sin este parametro), pendiente_revision usa el mismo limite que
+        cualquier otro estado.
+        """
         if not self.trabajos.is_dir():
             return
         limite = _ahora() - timedelta(hours=float(max_edad_horas))
+        limite_revision = (
+            _ahora() - timedelta(hours=float(max_edad_revision_horas))
+            if max_edad_revision_horas is not None else limite
+        )
         for carpeta in sorted(self.trabajos.iterdir()):
             if not carpeta.is_dir():
                 continue
@@ -240,7 +256,10 @@ class Almacen:
                     shutil.rmtree(carpeta, ignore_errors=True)
                     yield carpeta.name
                 continue
-            if self._fecha(trabajo.creado, carpeta) < limite:
+            limite_trabajo = (
+                limite_revision if trabajo.estado == PENDIENTE_REVISION else limite
+            )
+            if self._fecha(trabajo.creado, carpeta) < limite_trabajo:
                 shutil.rmtree(carpeta, ignore_errors=True)
                 yield carpeta.name
                 continue

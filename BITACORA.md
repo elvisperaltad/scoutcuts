@@ -1,5 +1,45 @@
 # Bitácora
 
+## 2026-11-04 (tarde) · Gracia extendida de purga para videos pendientes de revision
+
+El usuario pregunto como entrenar y mejorar defensa, pitcheo y catcher usando videos subidos
+por la PWA. Antes de proponer nada tuve que ser honesto con una premisa que no se sostenia:
+hoy no existe ningun "modelo" de esas tres categorias que se pueda entrenar con mas datos.
+Bateo tiene un detector de movimiento con reglas fijas (no aprende solo); defensa existe solo
+como marcado manual humano, sin deteccion automatica, y la web ni siquiera expone ese flujo;
+pitcheo y catcher no existen en ninguna parte del codigo, cero categorias, cero reglas.
+
+Encontre y arregle de inmediato un problema real y urgente, independiente de la decision de
+producto: si el QA sube hoy un video de defensa/pitcheo/catcher por la web, el servidor
+intenta el detector de bateo, no encuentra swings o no encuentra perfil de camara, lo marca
+`PENDIENTE_REVISION`, y la purga diaria de privacidad (`scoutcuts-purga.timer`, 24h, por los
+menores de edad en el material) lo borraria sin que nadie lo hubiera revisado todavia --
+perdiendo exactamente el material que se queria usar para avanzar.
+
+TDD en `almacen.py`: `Almacen.purgar()` gano un parametro opcional
+`max_edad_revision_horas` que da una gracia extendida (default 168h = 7 dias) SOLO a los
+trabajos en estado `PENDIENTE_REVISION`; cualquier otro estado sigue las 24h de siempre, y
+pasada tambien la gracia extendida el pendiente se borra igual (la privacidad no es
+negociable, solo se le da tiempo a que alguien lo vea primero). Sin pasar el parametro nuevo
+(API publica historica, bot), el comportamiento es exactamente el de antes -- nadie que ya
+llamaba a `purgar()` se entera del cambio. Dos pruebas nuevas en `test_almacen.py`.
+
+`api.py`: `Config` gano `max_edad_revision_horas` (default 168.0, variable de entorno
+`SCOUTCUTS_MAX_EDAD_REVISION_HORAS` opcional) y las dos llamadas a `purgar()` (API publica y
+PWA) ya la pasan. `despliegue/scoutcuts-purga.service`: el timer diario independiente del
+trafico tambien la usa. Variable agregada en `/etc/cortador-control/app.env` del servidor
+(168, explicita aunque el codigo ya trae ese default).
+
+Desplegado con `desplegar.sh`; el `.service` del timer no esta en su pipeline (no lo toca),
+asi que lo instale a mano con `cp` + `systemctl daemon-reload` + `systemctl start` para
+verificar en caliente (`status=0/SUCCESS`). Suite completa: 269/269 (267 + 2 nuevas).
+
+Esto NO es "ya se puede entrenar defensa/pitcheo/catcher": es solo la condicion previa para
+que un video de esas categorias sobreviva lo suficiente para que alguien lo revise. Falta
+definir con el cliente las categorias y reglas de pitcheo/catcher (igual que se hizo con
+defensa: cuantos clips, que cuenta como completo, que perspectiva) antes de construir
+deteccion o marcado para ellas.
+
 ## 2026-11-04 (mañana) · Actualizacion de version del service worker de la PWA
 
 Al continuar el desarrollo tras el despliegue inicial de la PWA, revise el propio codigo que

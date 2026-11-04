@@ -75,6 +75,7 @@ class Config:
     raiz: Path
     accel: bool = False
     max_edad_horas: float = 24.0
+    max_edad_revision_horas: float = 168.0
     qa_base: Path | None = None
     perfiles: Path | None = None
     limite_bytes: int = alm.LIMITE_POR_DEFECTO
@@ -121,6 +122,7 @@ class Config:
         # bot leen y escriben exactamente las mismas cuentas. Sin ella, cae
         # al default razonable `SCOUTCUTS_DATOS/usuarios` (ver usuarios_raiz).
         usuarios_env = entorno.get("SCOUTCUTS_USUARIOS")
+        max_edad_revision = entorno.get("SCOUTCUTS_MAX_EDAD_REVISION_HORAS")
         return cls(
             token=token,
             raiz=Path(raiz),
@@ -129,6 +131,9 @@ class Config:
             perfiles=Path(perfiles) if perfiles else None,
             telegram_token=telegram_token,
             usuarios_base=Path(usuarios_env) if usuarios_env else None,
+            max_edad_revision_horas=(
+                float(max_edad_revision) if max_edad_revision else 168.0
+            ),
         )
 
 
@@ -292,7 +297,10 @@ def crear_app(config: Config | None = None, *,
         if not cerrojo_subida.acquire(blocking=False):
             raise ErrorHTTP(503, MENSAJE_OTRA_SUBIDA_EN_CURSO)
         try:
-            list(almacen.purgar(config.max_edad_horas))
+            list(almacen.purgar(
+                config.max_edad_horas,
+                max_edad_revision_horas=config.max_edad_revision_horas,
+            ))
             if archivo is None or not archivo.filename:
                 raise ErrorHTTP(400, MENSAJE_SIN_VIDEO)
             try:
@@ -372,7 +380,10 @@ def crear_app(config: Config | None = None, *,
         if not cerrojo_subida.acquire(blocking=False):
             raise ErrorHTTP(503, MENSAJE_OTRA_SUBIDA_EN_CURSO)
         try:
-            list(almacen.purgar(config.max_edad_horas))
+            list(almacen.purgar(
+                config.max_edad_horas,
+                max_edad_revision_horas=config.max_edad_revision_horas,
+            ))
             if archivo is None or not archivo.filename:
                 raise ErrorHTTP(400, MENSAJE_SIN_VIDEO)
             try:

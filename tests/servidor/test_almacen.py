@@ -219,6 +219,55 @@ def test_purgar_sin_nada_que_borrar_no_falla(tmp_path):
     assert list(guardia.purgar(24)) == []
 
 
+def test_purgar_respeta_gracia_extendida_de_pendiente_revision(tmp_path):
+    """Un video sin perfil de camara (defensa/pitcheo/catcher subido por error
+    a la web) queda pendiente de revision humana. La purga normal de 24h no
+    puede borrarlo antes de que alguien lo revise, o se perderia material que
+    nadie llego a ver -- pero tampoco puede quedarse para siempre: pasada la
+    gracia extendida, se borra igual (los menores de edad no esperan)."""
+    from cortador.servidor import almacen as mod
+
+    guardia = _almacen(tmp_path)
+    pendiente = _con_entrada(guardia, "defensa.mp4")
+    pendiente.estado = mod.PENDIENTE_REVISION
+    guardia.guardar_estado(pendiente)
+    _envejecer(guardia, pendiente, 48)
+
+    normal = _con_entrada(guardia, "bateo.mp4")
+    _envejecer(guardia, normal, 48)
+
+    # A las 48h: el normal (24h de limite) ya vencio; el pendiente de revision
+    # (limite extendido a 168h = 7 dias) todavia no.
+    borrados = list(guardia.purgar(24, max_edad_revision_horas=168))
+
+    assert borrados == [normal.id]
+    assert not guardia.carpeta(normal.id).exists()
+    assert guardia.carpeta(pendiente.id).exists()
+    assert guardia.ruta_entrada(pendiente).exists()
+
+    # Pasada tambien la gracia extendida, se borra igual.
+    _envejecer(guardia, pendiente, 200)
+    borrados_tardios = list(guardia.purgar(24, max_edad_revision_horas=168))
+    assert borrados_tardios == [pendiente.id]
+    assert not guardia.carpeta(pendiente.id).exists()
+
+
+def test_purgar_sin_gracia_extendida_mantiene_comportamiento_anterior(tmp_path):
+    """Sin pasar max_edad_revision_horas, pendiente_revision usa el mismo
+    limite que cualquier otro estado -- no cambia el comportamiento de quien
+    ya llama a purgar() sin el parametro nuevo (API HTTP publica, bot)."""
+    from cortador.servidor import almacen as mod
+
+    guardia = _almacen(tmp_path)
+    pendiente = _con_entrada(guardia, "defensa.mp4")
+    pendiente.estado = mod.PENDIENTE_REVISION
+    guardia.guardar_estado(pendiente)
+    _envejecer(guardia, pendiente, 48)
+
+    assert list(guardia.purgar(24)) == [pendiente.id]
+    assert not guardia.carpeta(pendiente.id).exists()
+
+
 def test_depurar_texto_quita_rutas_y_nombres_de_usuario():
     from cortador.servidor.almacen import depurar_texto
 
