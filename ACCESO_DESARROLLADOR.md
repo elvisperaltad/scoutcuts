@@ -148,6 +148,16 @@ edites directamente /opt/cortador-control/app (es la release activa, el symlink 
 usa systemd) ni el snapshot /opt/cortador-control/dev/cortador-turnos (es del otro
 desarrollador QA, en un sandbox aislado).
 
+IMPORTANTE: no empieces de cero ni adivines qué falta. Este proyecto ya tiene mucho
+hecho y verificado en producción real (app de escritorio, API, PWA web en
+scoutcuts.com, bot de Telegram implementado, timer de purga por privacidad). Sigue
+EXACTAMENTE donde lo dejamos: la sección "Lo que falta (no implementado todavía)"
+de CONTINUAR_SERVIDOR.md (puntos 1 a 7) es la lista real y vigente de lo pendiente,
+en orden de prioridad aproximado. No reimplementes nada de lo que ese mismo
+documento describe como ya hecho/desplegado, y no toques decisiones de producto ya
+tomadas (sección "Decisiones de producto ya tomadas") sin preguntar primero: fueron
+decididas con el cliente, no son arbitrarias.
+
 Tienes acceso root real: puedes leer /etc/cortador-control/app.env, desplegar con
 despliegue/desplegar.sh y reiniciar servicios. Con ese poder van estas reglas, sin
 excepción: nunca imprimas, repitas ni pegues en el chat ningún valor de
