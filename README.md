@@ -14,6 +14,8 @@ El relevo exacto para continuar la API y el despliegue sin perder contexto está
 [`CONTINUAR_SERVIDOR.md`](CONTINUAR_SERVIDOR.md).
 La ubicación y reglas del repositorio editable para el Claude del QA están en
 [`DESARROLLO_REMOTO.md`](DESARROLLO_REMOTO.md).
+El acceso root completo para un segundo desarrollador de confianza, con GitHub
+como fuente de verdad del código, está en [`ACCESO_DESARROLLADOR.md`](ACCESO_DESARROLLADOR.md).
 
 El proyecto tiene una distribución Windows PyInstaller, pero su EXE sin firma fue bloqueado
 por la política Code Integrity empresarial. Como alternativa se implementó un builder que

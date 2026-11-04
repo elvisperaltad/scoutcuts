@@ -1,7 +1,7 @@
 # Continuación del servidor ScoutCuts
 
-Documento de relevo para otro Claude/agente. Estado verificado el 2026-11-03
-a las 21:05 UTC en el servidor, tras desplegar y probar la API de punta a punta.
+Documento de relevo para otro Claude/agente. Estado verificado el 2026-11-04
+(tarde) en el servidor, tras desplegar y probar la API de punta a punta.
 
 ## Regla principal
 
@@ -24,9 +24,18 @@ propietario.
 ## Acceso y máquina
 
 - Proyecto local: `C:/Dev/projects/cortador-turnos`.
+- **Repositorio GitHub real (fuente de verdad del codigo junto con la estacion local):**
+  `https://github.com/elvisperaltad/scoutcuts.git`, rama `main`. Privado. Ultimo commit
+  verificado: `8f116cd` ("Gracia extendida de purga para videos pendientes de revision").
 - Servidor: `144.202.57.21`.
 - Alias SSH administrativo obligatorio: `ssh precios` (no conectar como `root@IP`).
-- Acceso QA/desarrollo: usuario `scoutqa`, grupos `scoutdocs` y `scoutdev`, sin
+- **Acceso root completo agregado 2026-11-04** para un segundo desarrollador de
+  confianza, con la MISMA clave que ya tenia (`scoutcuts-20261103`, huella
+  `SHA256:iDZfAVekqpKfK5bUX7RRRlSRNZcq6qJgFA2RI31qUko`) ahora tambien en
+  `/root/.ssh/authorized_keys`. Detalle completo, que puede hacer y que reglas sigue:
+  `ACCESO_DESARROLLADOR.md`.
+- Acceso QA/desarrollo RESTRINGIDO (sigue activo en paralelo, para quien no deba tener
+  nivel root): usuario `scoutqa`, grupos `scoutdocs` y `scoutdev`, sin
   sudo, sin secretos, sin acceso a producción y sin forwarding/túneles. Puede
   escribir únicamente en `/opt/cortador-control/dev/cortador-turnos` (un
   SNAPSHOT separado, no el código desplegado). Clave pública con comentario
@@ -238,7 +247,29 @@ funcione. Cópialos a mano a `<release>/perfiles/` (propiedad `root:cortador`,
    video podía quedar mucho más de `max_edad_horas` sin que nadie lo
    notara — riesgo de privacidad real (menores de edad involucrados).
    Verificado con `systemctl start scoutcuts-purga.service` manual (exit 0,
-   `status=0/SUCCESS` en `journalctl`).
+   `status=0/SUCCESS` en `journalctl`). **2026-11-04 (tarde): `Almacen.purgar()`
+   gano `max_edad_revision_horas` (default 168h/7 dias, env
+   `SCOUTCUTS_MAX_EDAD_REVISION_HORAS`), que da gracia extendida SOLO a
+   trabajos en `PENDIENTE_REVISION` antes de que la purga de privacidad los
+   borre. Motivo: un video de defensa/pitcheo/catcher subido por la PWA cae
+   hoy en ese estado (ver punto 7) y se borraria en 24h sin que nadie lo
+   revisara.**
+7. **Deteccion automatica de defensa, pitcheo y catcher — NO EXISTE.** Solo
+   "bateo" tiene detector automatico (reglas fijas de movimiento, no un
+   modelo que aprenda de mas datos). Defensa existe SOLO como marcado manual
+   humano sobre un video ya grabado (`cortador defensa`, ver `README.md`
+   seccion "Flujo de defensa"); la web/PWA ni siquiera expone ese flujo
+   todavia. Pitcheo y catcher no tienen absolutamente nada: ni categorias
+   definidas, ni reglas de que cuenta como jugada completa, ni deteccion, ni
+   herramienta de marcado. En el servidor solo existen 3 perfiles de camara
+   manuales ligados a un video especifico (`academia_video1.json`,
+   `axel_img_0682.json`, `luis_abreu_s1440015.json`), no hay ningun "modelo"
+   generalizable que mejore con mas videos subidos.
+   Antes de construir nada de esto hace falta que el cliente defina, igual
+   que se hizo con defensa: cuantos clips por entrega, que cuenta como jugada
+   completa, desde que angulo de camara se grabara cada una. Sin eso,
+   cualquier deteccion automatica que se escriba estaria adivinando el
+   criterio del cliente.
 
 ## Documentos relacionados
 
@@ -247,6 +278,9 @@ En el proyecto local y copiados al servidor bajo `/opt/cortador-control/docs/`:
 - `SERVIDOR_CONTROL.md`: reducido a un puntero hacia este documento (se
   decidió mantener un solo documento de relevo sincronizado en vez de dos
   que podían desincronizarse).
+- `ACCESO_DESARROLLADOR.md`: **NUEVO (2026-11-04).** Acceso root completo al
+  servidor para un segundo desarrollador de confianza, con GitHub como
+  fuente de verdad del codigo. Distinto del acceso restringido de abajo.
 - `TELEGRAM_BOT.md`: cómo registrar scouts, configurar el token del bot,
   límites reales de Telegram (20 MB descarga / 50 MB subida) y por qué esta
   versión no usa un LLM local.
