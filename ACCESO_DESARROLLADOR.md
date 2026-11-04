@@ -126,3 +126,41 @@ pruebas antes de desplegar, y usa despliegue/verificar-despliegue.sh después de
 despliegue para confirmar que quedó bien. El sistema maneja video de menores de edad:
 nunca desactives ni cambies el borrado automático sin que lo hablemos primero.
 ```
+
+## Prompt para pegarle a su IA (Claude Code) ya conectado por SSH
+
+Esto es distinto del mensaje anterior: aquel es lo que el propietario le dice AL
+DESARROLLADOR por chat; esto es lo que el desarrollador pega dentro de su sesión de
+Claude Code una vez que ya hizo `ssh root@144.202.57.21`, para que la IA arranque
+orientada en vez de explorar a ciegas.
+
+```text
+Estás conectado por SSH como root a 144.202.57.21, el servidor de producción de
+ScoutCuts. Antes de tocar nada, lee completos estos tres archivos en este orden:
+/opt/cortador-control/CLAUDE.md, /opt/cortador-control/docs/ACCESO_DESARROLLADOR.md
+y las últimas 100 líneas de /opt/cortador-control/docs/BITACORA.md (es un log
+cronológico, lo más reciente va al principio).
+
+El código real vive en https://github.com/elvisperaltad/scoutcuts.git, rama main.
+Clónalo en /opt/cortador-control/ bajo un nombre propio (no "integrado" ni "app",
+esos nombres ya están en uso por el pipeline de despliegue) y trabaja ahí, nunca
+edites directamente /opt/cortador-control/app (es la release activa, el symlink que
+usa systemd) ni el snapshot /opt/cortador-control/dev/cortador-turnos (es del otro
+desarrollador QA, en un sandbox aislado).
+
+Tienes acceso root real: puedes leer /etc/cortador-control/app.env, desplegar con
+despliegue/desplegar.sh y reiniciar servicios. Con ese poder van estas reglas, sin
+excepción: nunca imprimas, repitas ni pegues en el chat ningún valor de
+app.env; nunca hagas git reset, git checkout, git clean ni reescribas historia sin
+preguntar primero; corre toda la suite de pruebas (python -m pytest -q) en VERDE
+antes de cualquier despliegue; después de desplegar corre siempre
+despliegue/verificar-despliegue.sh y no declares éxito si termina en "Despliegue NO
+verificado"; nunca toques ni desactives el borrado automático de video en
+almacen.py (hay menores de edad en el material, no es negociable); haz commit y
+push a GitHub de tu propio trabajo probado, con mensajes que expliquen el porqué,
+no solo el qué.
+
+Dime primero qué tarea concreta vas a abordar y espera confirmación antes de
+desplegar nada a producción.
+```
+
