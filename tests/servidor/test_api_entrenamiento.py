@@ -1,5 +1,6 @@
 """Pruebas de los endpoints `/v1/entrenamiento/*`: zona de entrenamiento QA
-expuesta por la API, aislada de la produccion real por un token distinto.
+expuesta por la API, aislada de la produccion real por un token distinto,
+y compartida por las cuatro disciplinas (defensa, bateo, pitcheo, catcher).
 """
 
 from __future__ import annotations
@@ -55,14 +56,39 @@ def test_sin_token_de_entrenamiento_configurado_las_rutas_no_existen(servicio):
     assert respuesta.status_code == 404
 
 
+def test_disciplinas_lista_las_cuatro_con_sus_categorias(servicio_con_entrenamiento):
+    cliente, _ = servicio_con_entrenamiento()
+    respuesta = cliente.get("/v1/entrenamiento/disciplinas", headers=_cabeceras())
+    assert respuesta.status_code == 200
+    ids = {d["id"] for d in respuesta.json()["disciplinas"]}
+    assert ids == {"defensa", "bateo", "pitcheo", "catcher"}
+    defensa = next(d for d in respuesta.json()["disciplinas"] if d["id"] == "defensa")
+    assert {c["id"] for c in defensa["categorias"]} == {"adelante", "derecha", "izquierda"}
+
+
 def test_estado_del_modelo_sin_ejemplos(servicio_con_entrenamiento):
     cliente, _ = servicio_con_entrenamiento()
     respuesta = cliente.get("/v1/entrenamiento/modelo", headers=_cabeceras())
     assert respuesta.status_code == 200
     cuerpo = respuesta.json()
-    assert cuerpo["total_ejemplos"] == 0
+    assert set(cuerpo) == {"defensa", "bateo", "pitcheo", "catcher"}
+    assert cuerpo["defensa"]["total_ejemplos"] == 0
+    assert set(cuerpo["defensa"]["categorias"]) == {"adelante", "derecha", "izquierda"}
+
+
+def test_estado_del_modelo_de_una_disciplina(servicio_con_entrenamiento):
+    cliente, _ = servicio_con_entrenamiento()
+    respuesta = cliente.get("/v1/entrenamiento/modelo/bateo", headers=_cabeceras())
+    assert respuesta.status_code == 200
+    cuerpo = respuesta.json()
+    assert cuerpo["disciplina"] == "bateo"
     assert cuerpo["modelo_calibrado"] is False
-    assert set(cuerpo["categorias"]) == {"adelante", "derecha", "izquierda"}
+
+
+def test_estado_del_modelo_de_disciplina_desconocida_404(servicio_con_entrenamiento):
+    cliente, _ = servicio_con_entrenamiento()
+    respuesta = cliente.get("/v1/entrenamiento/modelo/vp_live", headers=_cabeceras())
+    assert respuesta.status_code == 404
 
 
 def test_estado_del_modelo_requiere_el_token_correcto(servicio_con_entrenamiento):
@@ -93,11 +119,12 @@ def test_subir_entrenar_y_recibir_feedback_de_punta_a_punta(servicio_con_entrena
     ruta = _video_real(tmp_path, lado="derecha")
     with ruta.open("rb") as flujo:
         subida = cliente.post(
-            "/v1/entrenamiento/videos",
+            "/v1/entrenamiento/defensa/videos",
             files={"archivo": ("practica.mp4", flujo, "video/mp4")},
             headers=_cabeceras(),
         )
     assert subida.status_code == 201
+    assert subida.json()["disciplina"] == "defensa"
     identificador = subida.json()["id"]
 
     entrenar = cliente.post(
@@ -131,11 +158,50 @@ def test_subir_entrenar_y_recibir_feedback_de_punta_a_punta(servicio_con_entrena
     assert reintento.status_code == 404
 
 
+def test_subir_a_disciplina_desconocida_devuelve_404(servicio_con_entrenamiento, tmp_path):
+    cliente, _ = servicio_con_entrenamiento()
+    ruta = _video_real(tmp_path, lado="derecha")
+    with ruta.open("rb") as flujo:
+        respuesta = cliente.post(
+            "/v1/entrenamiento/vp_live/videos",
+            files={"archivo": ("practica.mp4", flujo, "video/mp4")},
+            headers=_cabeceras(),
+        )
+    assert respuesta.status_code == 404
+
+
 def test_subir_formato_no_soportado_devuelve_415(servicio_con_entrenamiento):
     cliente, _ = servicio_con_entrenamiento()
     respuesta = cliente.post(
-        "/v1/entrenamiento/videos",
+        "/v1/entrenamiento/defensa/videos",
         files={"archivo": ("documento.txt", b"no es un video", "text/plain")},
         headers=_cabeceras(),
     )
     assert respuesta.status_code == 415
+
+
+def test_entrenar_bateo_no_contamina_el_estado_de_defensa(servicio_con_entrenamiento, tmp_path):
+    cliente, _ = servicio_con_entrenamiento()
+    ruta = _video_real(tmp_path, lado="derecha", nombre="swing.mp4")
+    with ruta.open("rb") as flujo:
+        subida = cliente.post(
+            "/v1/entrenamiento/bateo/videos",
+            files={"archivo": ("swing.mp4", flujo, "video/mp4")},
+            headers=_cabeceras(),
+        )
+    identificador = subida.json()["id"]
+    cliente.post(
+        f"/v1/entrenamiento/videos/{identificador}/entrenar",
+        json={
+            "video": "swing.mp4",
+            "repeticiones": [{
+                "categoria": "valido", "inicio": 0.0, "tiro": 2.0,
+                "estado": "completa", "seleccionada": True,
+            }],
+        },
+        headers=_cabeceras(),
+    )
+
+    estado = cliente.get("/v1/entrenamiento/modelo", headers=_cabeceras()).json()
+    assert estado["bateo"]["total_ejemplos"] == 1
+    assert estado["defensa"]["total_ejemplos"] == 0

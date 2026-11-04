@@ -1,5 +1,7 @@
 """Zona de entrenamiento para el QA: sube videos de practica, los marca, y
-recibe feedback inmediato del modelo mientras lo entrena.
+recibe feedback inmediato del modelo mientras lo entrena -- para cualquiera
+de las disciplinas registradas en `disciplinas.py` (defensa, bateo,
+pitcheo, catcher).
 
 Aislada de la PWA de produccion real: otra carpeta en disco, otro token,
 nunca toca el Almacen/Cola de clientes reales (ver api.py, seccion
@@ -21,8 +23,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import BinaryIO
 
-from .. import defensa as defensa_mod
-from .. import defensa_ml as defensa_ml_mod
+from .. import disciplinas as disciplinas_mod
+from .. import ml_generico
+from .. import repeticiones as repeticiones_mod
 from ..app import _EXTENSIONES_VIDEO
 
 EXTENSIONES_PERMITIDAS = frozenset(_EXTENSIONES_VIDEO)
@@ -44,6 +47,10 @@ class ArchivoDePracticaNoAceptado(ValueError):
     pass
 
 
+class DisciplinaDesconocida(ValueError):
+    pass
+
+
 def _ahora() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -61,6 +68,7 @@ class VideoDePractica:
     id: str
     nombre: str
     extension: str
+    disciplina: str
     creado: str = field(default_factory=lambda: _ahora().isoformat(timespec="seconds"))
 
 
@@ -77,21 +85,27 @@ class ResultadoEntrenamiento:
 
 
 class ZonaEntrenamiento:
-    """Almacen aislado para la zona de entrenamiento QA (nunca produccion)."""
+    """Almacen aislado para la zona de entrenamiento QA (nunca produccion).
+
+    Una sola instancia atiende las cuatro disciplinas: cada video de
+    practica queda asociado a la disciplina con la que se subio, y cada
+    disciplina tiene su propio dataset/modelo en disco (nunca se mezclan
+    entre si, ni con los de produccion de `cortador defensa`).
+    """
 
     def __init__(self, raiz: str | Path, *,
                 limite_bytes: int = LIMITE_BYTES_POR_DEFECTO,
-                ruta_dataset: str | Path | None = None,
-                ruta_modelo: str | Path | None = None) -> None:
+                carpeta_modelos: str | Path | None = None) -> None:
         self.raiz = Path(raiz)
         self.limite_bytes = int(limite_bytes)
-        self.ruta_dataset = (
-            Path(ruta_dataset) if ruta_dataset else defensa_ml_mod.ruta_dataset_por_defecto()
-        )
-        self.ruta_modelo = (
-            Path(ruta_modelo) if ruta_modelo else defensa_ml_mod.ruta_modelo_por_defecto()
-        )
+        self.carpeta_modelos = Path(carpeta_modelos) if carpeta_modelos else self.raiz / "modelos"
         self._cerrojo = threading.Lock()
+
+    def _ruta_dataset(self, disciplina: str) -> Path:
+        return self.carpeta_modelos / f"dataset_{disciplina}.json"
+
+    def _ruta_modelo(self, disciplina: str) -> Path:
+        return self.carpeta_modelos / f"modelo_{disciplina}.json"
 
     @property
     def _carpeta_videos(self) -> Path:
@@ -113,14 +127,23 @@ class ZonaEntrenamiento:
             raise VideoDePracticaNoEncontrado(MENSAJE_NO_ENCONTRADO)
         return texto
 
-    def subir(self, nombre_archivo: str, flujo: BinaryIO, *,
+    @staticmethod
+    def _validar_disciplina(disciplina: str) -> str:
+        if disciplina not in disciplinas_mod.DISCIPLINAS:
+            raise DisciplinaDesconocida(f"Disciplina desconocida: {disciplina}")
+        return disciplina
+
+    def subir(self, disciplina: str, nombre_archivo: str, flujo: BinaryIO, *,
               trozo: int = 1024 * 1024) -> VideoDePractica:
-        """Guarda un video de practica nuevo; nunca lo asocia a un cliente real."""
+        """Guarda un video de practica nuevo para una disciplina; nunca lo
+        asocia a un cliente real."""
+        disciplina = self._validar_disciplina(disciplina)
         nombre = Path(str(nombre_archivo).replace("\\", "/")).name.strip()
         extension = Path(nombre).suffix.lower()
         if extension not in EXTENSIONES_PERMITIDAS:
             raise ArchivoDePracticaNoAceptado(MENSAJE_FORMATO_NO_SOPORTADO)
-        video = VideoDePractica(id=uuid.uuid4().hex, nombre=nombre, extension=extension)
+        video = VideoDePractica(id=uuid.uuid4().hex, nombre=nombre, extension=extension,
+                                disciplina=disciplina)
         carpeta = self._carpeta(video.id)
         carpeta.mkdir(parents=True, exist_ok=True)
         destino = self._ruta_video(video)
@@ -174,12 +197,16 @@ class ZonaEntrenamiento:
         que esten en estado 'completa', entrena, y BORRA el video de
         practica -- en ese orden, y antes de devolver nada al QA.
 
-        A diferencia del manifiesto de entrega al cliente (`cortador
-        defensa`, que exige exactamente 2+2+2 repeticiones para exportar un
-        video final), aqui el QA puede marcar y enviar UNA sola repeticion
-        a la vez: el objetivo es feedback inmediato por cada jugada que
-        marca, no un paquete completo. Las repeticiones en estado
-        'incompleta' se ignoran para entrenar, nunca fallan la peticion.
+        La disciplina la decide el video (quedo fijada al subirlo), no el
+        manifiesto: asi nadie puede entrenar bateo con repeticiones
+        categorizadas como defensa por error.
+
+        A diferencia del manifiesto de entrega al cliente (que exige el
+        paquete 2+2+2 completo para defensa), aqui el QA puede marcar y
+        enviar UNA sola repeticion a la vez: el objetivo es feedback
+        inmediato por cada jugada que marca, no un paquete completo. Las
+        repeticiones en estado 'incompleta' se ignoran para entrenar,
+        nunca fallan la peticion.
 
         El entrenamiento debe correr ANTES de borrar el video: es la unica
         razon para que exista el video en disco en primer lugar.
@@ -193,17 +220,18 @@ class ZonaEntrenamiento:
                 raise ValueError(
                     "El manifiesto corresponde a otro video, no al que subiste."
                 )
-            repeticiones = defensa_mod.repeticiones_desde_lista(repeticiones_crudas)
+            categorias = disciplinas_mod.categorias(video.disciplina)
+            repeticiones = repeticiones_mod.repeticiones_desde_lista(repeticiones_crudas, categorias)
             completas = tuple(r for r in repeticiones if r.estado == "completa")
             if not completas:
                 raise ValueError(
                     "No hay ninguna repeticion marcada como 'completa' en lo que enviaste."
                 )
-            manifiesto = defensa_mod.Manifiesto(video.nombre, repeticiones, completas)
 
-            dataset, modelo, extraidas = defensa_ml_mod.actualizar_desde_manifiesto(
-                ruta_video, manifiesto,
-                ruta_dataset=self.ruta_dataset, ruta_modelo=self.ruta_modelo,
+            dataset, modelo, extraidas = ml_generico.actualizar_desde_repeticiones(
+                ruta_video, video.disciplina, completas,
+                ruta_dataset=self._ruta_dataset(video.disciplina),
+                ruta_modelo=self._ruta_modelo(video.disciplina),
             )
 
             # A partir de aqui el video ya no hace falta: se borro su carpeta
@@ -223,10 +251,8 @@ class ZonaEntrenamiento:
                     fila["confianza"] = None
                     fila["coincide"] = None
                 evaluacion.append(fila)
-            faltantes = [
-                c for c in defensa_mod.CATEGORIAS if not dataset.ejemplos.get(c)
-            ]
-            cubiertas = [c for c in defensa_mod.CATEGORIAS if c not in faltantes]
+            faltantes = [c for c in categorias if not dataset.ejemplos.get(c)]
+            cubiertas = [c for c in categorias if c not in faltantes]
             return ResultadoEntrenamiento(
                 ejemplos_agregados=len(completas),
                 total_ejemplos_dataset=dataset.total_ejemplos(),
@@ -269,17 +295,23 @@ class ZonaEntrenamiento:
                 borrados.append(carpeta.name)
         return borrados
 
+    def estado_modelo(self, disciplina: str) -> dict:
+        """Resumen del estado del modelo de UNA disciplina para mostrar al
+        QA: nunca expone rutas, perfiles numericos crudos ni nada que no
+        sea una cuenta y una lista de categorias que ya puede o no puede
+        reconocer todavia."""
+        disciplina = self._validar_disciplina(disciplina)
+        categorias = disciplinas_mod.categorias(disciplina)
+        dataset = ml_generico.Dataset.cargar(self._ruta_dataset(disciplina), disciplina)
+        conteos = {c: len(dataset.ejemplos.get(c, [])) for c in categorias}
+        calibrado = self._ruta_modelo(disciplina).exists()
+        return {
+            "disciplina": disciplina,
+            "total_ejemplos": dataset.total_ejemplos(),
+            "ejemplos_por_categoria": conteos,
+            "modelo_calibrado": calibrado,
+            "categorias": list(categorias),
+        }
 
-def estado_modelo(ruta_dataset: str | Path, ruta_modelo: str | Path) -> dict:
-    """Resumen del estado del modelo para mostrar al QA: nunca expone rutas,
-    perfiles numericos crudos ni nada que no sea una cuenta y una lista de
-    categorias que ya puede o no puede reconocer todavia."""
-    dataset = defensa_ml_mod.Dataset.cargar(ruta_dataset)
-    conteos = {c: len(dataset.ejemplos.get(c, [])) for c in defensa_mod.CATEGORIAS}
-    calibrado = Path(ruta_modelo).exists()
-    return {
-        "total_ejemplos": dataset.total_ejemplos(),
-        "ejemplos_por_categoria": conteos,
-        "modelo_calibrado": calibrado,
-        "categorias": list(defensa_mod.CATEGORIAS),
-    }
+    def estado_todas_las_disciplinas(self) -> dict:
+        return {d: self.estado_modelo(d) for d in disciplinas_mod.DISCIPLINAS}

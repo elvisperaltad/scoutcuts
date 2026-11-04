@@ -1,6 +1,7 @@
 """Pruebas de `cortador.servidor.entrenamiento`: zona aislada donde el QA
 sube videos de practica, los marca, y recibe feedback del modelo mientras
-lo entrena -- separada por completo de la PWA de produccion real.
+lo entrena -- separada por completo de la PWA de produccion real, y
+compartida por las cuatro disciplinas (defensa, bateo, pitcheo, catcher).
 """
 
 from __future__ import annotations
@@ -17,21 +18,17 @@ from videos_sinteticos import cv2_disponible  # noqa: F401 - fixture usada por l
 def _zona(tmp_path):
     from cortador.servidor.entrenamiento import ZonaEntrenamiento
 
-    return ZonaEntrenamiento(
-        tmp_path / "zona_qa",
-        ruta_dataset=tmp_path / "dataset.json",
-        ruta_modelo=tmp_path / "modelo.json",
-    )
+    return ZonaEntrenamiento(tmp_path / "zona_qa")
 
 
-def _subir_video_real(zona, tmp_path, lado="derecha", nombre="practica.mp4"):
+def _subir_video_real(zona, tmp_path, disciplina="defensa", lado="derecha", nombre="practica.mp4"):
     ruta = tmp_path / nombre
     _crear_video_con_movimiento_lateral(ruta, lado=lado, segundos=2.0)
     with ruta.open("rb") as flujo:
-        return zona.subir(nombre, flujo), ruta
+        return zona.subir(disciplina, nombre, flujo), ruta
 
 
-def _manifiesto_con_una_repeticion(nombre_video, categoria, inicio=0.0, tiro=2.0):
+def _manifiesto_con_una_repeticion(categoria, inicio=0.0, tiro=2.0):
     return [{
         "categoria": categoria, "inicio": inicio, "tiro": tiro,
         "estado": "completa", "seleccionada": True,
@@ -44,9 +41,18 @@ def test_subir_guarda_el_video_de_practica_aislado(tmp_path, cv2_disponible):
 
     recuperado = zona.video(video.id)
     assert recuperado.nombre == "practica.mp4"
+    assert recuperado.disciplina == "defensa"
     assert zona._ruta_video(recuperado).exists()
     # Aislado: nunca comparte carpeta con la raiz de produccion real.
     assert "zona_qa" in str(zona.raiz)
+
+
+def test_subir_rechaza_disciplina_desconocida(tmp_path):
+    from cortador.servidor.entrenamiento import DisciplinaDesconocida
+
+    zona = _zona(tmp_path)
+    with pytest.raises(DisciplinaDesconocida):
+        zona.subir("vp_live", "documento.mp4", io.BytesIO(b"x"))
 
 
 def test_subir_rechaza_formato_no_soportado(tmp_path):
@@ -54,7 +60,7 @@ def test_subir_rechaza_formato_no_soportado(tmp_path):
 
     zona = _zona(tmp_path)
     with pytest.raises(ArchivoDePracticaNoAceptado):
-        zona.subir("documento.txt", io.BytesIO(b"no es un video"))
+        zona.subir("defensa", "documento.txt", io.BytesIO(b"no es un video"))
 
 
 def test_subir_rechaza_video_demasiado_grande(tmp_path):
@@ -63,7 +69,7 @@ def test_subir_rechaza_video_demasiado_grande(tmp_path):
     zona = _zona(tmp_path)
     zona.limite_bytes = 10
     with pytest.raises(ArchivoDePracticaNoAceptado):
-        zona.subir("grande.mp4", io.BytesIO(b"x" * 1000))
+        zona.subir("defensa", "grande.mp4", io.BytesIO(b"x" * 1000))
 
 
 def test_entrenar_con_manifiesto_borra_el_video_tras_extraer(tmp_path, cv2_disponible):
@@ -75,7 +81,7 @@ def test_entrenar_con_manifiesto_borra_el_video_tras_extraer(tmp_path, cv2_dispo
     assert carpeta.exists()
 
     resultado = zona.entrenar_con_manifiesto(
-        video.id, _manifiesto_con_una_repeticion("practica.mp4", "derecha"), "practica.mp4"
+        video.id, _manifiesto_con_una_repeticion("derecha"), "practica.mp4"
     )
 
     assert not carpeta.exists(), "el video de practica debio borrarse tras entrenar"
@@ -84,13 +90,43 @@ def test_entrenar_con_manifiesto_borra_el_video_tras_extraer(tmp_path, cv2_dispo
     assert resultado.total_ejemplos_dataset == 1
 
 
+def test_entrenar_rechaza_categoria_de_otra_disciplina(tmp_path, cv2_disponible):
+    """Un video subido como 'bateo' nunca debe poder entrenarse con una
+    categoria de 'defensa' (o viceversa): la disciplina la fija la subida,
+    no el manifiesto."""
+    zona = _zona(tmp_path)
+    video, _ = _subir_video_real(zona, tmp_path, disciplina="bateo", nombre="swing.mp4")
+
+    with pytest.raises(ValueError):
+        zona.entrenar_con_manifiesto(
+            video.id, _manifiesto_con_una_repeticion("derecha"), "swing.mp4"
+        )
+    # Al fallar la validacion, el video de practica NO debe haberse borrado.
+    assert zona._carpeta(video.id).exists()
+
+
+def test_disciplinas_nunca_comparten_dataset(tmp_path, cv2_disponible):
+    """Entrenar bateo no debe tocar el dataset de defensa, ni al revés."""
+    zona = _zona(tmp_path)
+    video_bateo, _ = _subir_video_real(zona, tmp_path, disciplina="bateo", nombre="swing.mp4")
+    zona.entrenar_con_manifiesto(
+        video_bateo.id, _manifiesto_con_una_repeticion("valido"), "swing.mp4"
+    )
+
+    estado_defensa = zona.estado_modelo("defensa")
+    estado_bateo = zona.estado_modelo("bateo")
+    assert estado_defensa["total_ejemplos"] == 0
+    assert estado_bateo["total_ejemplos"] == 1
+    assert estado_bateo["ejemplos_por_categoria"]["valido"] == 1
+
+
 def test_entrenar_con_manifiesto_de_otro_video_falla_sin_tocar_nada(tmp_path, cv2_disponible):
     zona = _zona(tmp_path)
     video, _ = _subir_video_real(zona, tmp_path, lado="derecha")
 
     with pytest.raises(ValueError):
         zona.entrenar_con_manifiesto(
-            video.id, _manifiesto_con_una_repeticion("otro.mp4", "derecha"), "otro.mp4"
+            video.id, _manifiesto_con_una_repeticion("derecha"), "otro.mp4"
         )
 
     # Al fallar la validacion, el video de practica NO debe haberse borrado.
@@ -106,12 +142,12 @@ def test_entrenar_dos_veces_el_mismo_video_la_segunda_falla(tmp_path, cv2_dispon
     zona = _zona(tmp_path)
     video, _ = _subir_video_real(zona, tmp_path, lado="derecha")
     zona.entrenar_con_manifiesto(
-        video.id, _manifiesto_con_una_repeticion("practica.mp4", "derecha"), "practica.mp4"
+        video.id, _manifiesto_con_una_repeticion("derecha"), "practica.mp4"
     )
 
     with pytest.raises(VideoDePracticaNoEncontrado):
         zona.entrenar_con_manifiesto(
-            video.id, _manifiesto_con_una_repeticion("practica.mp4", "derecha"), "practica.mp4"
+            video.id, _manifiesto_con_una_repeticion("derecha"), "practica.mp4"
         )
 
 
@@ -123,20 +159,19 @@ def test_feedback_coincide_cuando_el_modelo_ya_tiene_las_tres_categorias(tmp_pat
     for lado, categoria in (("derecha", "derecha"), ("izquierda", "izquierda")):
         video, _ = _subir_video_real(zona, tmp_path, lado=lado, nombre=f"{categoria}.mp4")
         zona.entrenar_con_manifiesto(
-            video.id, _manifiesto_con_una_repeticion(f"{categoria}.mp4", categoria),
-            f"{categoria}.mp4",
+            video.id, _manifiesto_con_una_repeticion(categoria), f"{categoria}.mp4",
         )
     # "adelante" con las mismas caracteristicas base (reusa el video de
     # movimiento lateral como estandin, solo para tener las 3 categorias
     # cubiertas y poder calibrar el modelo).
     video_a, _ = _subir_video_real(zona, tmp_path, lado="derecha", nombre="adelante.mp4")
     zona.entrenar_con_manifiesto(
-        video_a.id, _manifiesto_con_una_repeticion("adelante.mp4", "adelante"), "adelante.mp4"
+        video_a.id, _manifiesto_con_una_repeticion("adelante"), "adelante.mp4"
     )
 
     video_final, _ = _subir_video_real(zona, tmp_path, lado="derecha", nombre="final.mp4")
     resultado = zona.entrenar_con_manifiesto(
-        video_final.id, _manifiesto_con_una_repeticion("final.mp4", "derecha"), "final.mp4"
+        video_final.id, _manifiesto_con_una_repeticion("derecha"), "final.mp4"
     )
 
     assert resultado.modelo_calibrado is True
@@ -171,17 +206,24 @@ def test_limpiar_vencidos_borra_videos_de_practica_nunca_marcados(tmp_path, cv2_
 
 
 def test_estado_modelo_no_expone_rutas_ni_numeros_crudos(tmp_path, cv2_disponible):
-    from cortador.servidor.entrenamiento import estado_modelo
-
     zona = _zona(tmp_path)
     video, _ = _subir_video_real(zona, tmp_path, lado="derecha")
     zona.entrenar_con_manifiesto(
-        video.id, _manifiesto_con_una_repeticion("practica.mp4", "derecha"), "practica.mp4"
+        video.id, _manifiesto_con_una_repeticion("derecha"), "practica.mp4"
     )
 
-    resumen = estado_modelo(zona.ruta_dataset, zona.ruta_modelo)
+    resumen = zona.estado_modelo("defensa")
 
     assert resumen["total_ejemplos"] == 1
     assert resumen["ejemplos_por_categoria"]["derecha"] == 1
     assert resumen["modelo_calibrado"] is False  # aun faltan 2 categorias
     assert "ruta" not in json.dumps(resumen)
+
+
+def test_estado_todas_las_disciplinas_incluye_las_cuatro(tmp_path):
+    zona = _zona(tmp_path)
+    estado = zona.estado_todas_las_disciplinas()
+    assert set(estado) == {"defensa", "bateo", "pitcheo", "catcher"}
+    for resumen in estado.values():
+        assert resumen["total_ejemplos"] == 0
+        assert resumen["modelo_calibrado"] is False

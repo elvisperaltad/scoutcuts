@@ -95,8 +95,10 @@
     margin-bottom: 10px;
   }
   .tiempo-marcado b { color: var(--texto); }
-  .categorias { display: flex; gap: 8px; margin-bottom: 14px; }
+  .categorias { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
   .categorias button {
+    flex: 1 1 auto;
+    min-width: 80px;
     background: transparent;
     border: 1px solid var(--borde);
     color: var(--texto);
@@ -171,6 +173,8 @@
 
     <div class="tarjeta" id="tarjeta-estado-modelo">
       <h3 style="margin-top:0; font-size:14px;">Lo que ya sabe el modelo</h3>
+      <label for="selector-disciplina">¿Qué vas a entrenar?</label>
+      <select id="selector-disciplina" style="width:100%; padding:14px; font-size:16px; border-radius:10px; border:1px solid var(--borde); background:#0b1220; color:var(--texto); margin-bottom:14px;"></select>
       <div class="resumen-modelo" id="resumen-modelo">Cargando...</div>
     </div>
 
@@ -193,12 +197,8 @@
         <button class="secundario" id="btn-marcar-inicio">Marcar inicio</button>
         <button class="secundario" id="btn-marcar-tiro">Marcar tiro</button>
       </div>
-      <label>¿Hacia dónde se movió el jugador?</label>
-      <div class="categorias">
-        <button data-categoria="adelante">Adelante</button>
-        <button data-categoria="derecha">Derecha</button>
-        <button data-categoria="izquierda">Izquierda</button>
-      </div>
+      <label>¿Qué categoría es esta jugada?</label>
+      <div class="categorias" id="categorias"></div>
       <div class="error" id="error-jugada"></div>
       <button id="btn-agregar-jugada" disabled>Agregar esta jugada</button>
 

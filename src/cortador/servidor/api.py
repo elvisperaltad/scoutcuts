@@ -26,12 +26,13 @@ from starlette.exceptions import HTTPException as HTTPExceptionStarlette
 from . import almacen as alm
 from . import procesador as procesador_mod
 from .almacen import ArchivoNoAceptado, Almacen, TrabajoDesconocido, Trabajo
+from .. import disciplinas as disciplinas_mod
 from .cola import Cola
 from .entrenamiento import (
     ArchivoDePracticaNoAceptado,
+    DisciplinaDesconocida,
     VideoDePracticaNoEncontrado,
     ZonaEntrenamiento,
-    estado_modelo as entrenamiento_estado_modelo,
 )
 from .usuarios import Usuario, Usuarios
 
@@ -212,17 +213,14 @@ def crear_app(config: Config | None = None, *,
     estado_bot: dict = {"control": None}
     # Zona de entrenamiento QA: solo se activa con su propio token (separado
     # del token de produccion). Tiene su propio cerrojo interno, aislado del
-    # de subidas de produccion (nunca compiten por el mismo candado). El
-    # dataset/modelo de entrenamiento viven DENTRO de entrenamiento_raiz,
-    # nunca en los defaults del proyecto (modelos/dataset_defensa.json es
-    # el modelo real que alimenta `cortador defensa`; mezclarlos dejaria
-    # que practicas de QA contaminen el modelo de produccion real).
+    # de subidas de produccion (nunca compiten por el mismo candado).
+    # Atiende las cuatro disciplinas (defensa, bateo, pitcheo, catcher) con
+    # un dataset/modelo por disciplina DENTRO de entrenamiento_raiz, nunca
+    # los defaults del proyecto (modelos/dataset_defensa.json es el modelo
+    # real que alimenta `cortador defensa`; mezclarlos dejaria que
+    # practicas de QA contaminen el modelo de produccion real).
     zona_entrenamiento = (
-        ZonaEntrenamiento(
-            config.entrenamiento_raiz,
-            ruta_dataset=config.entrenamiento_raiz / "dataset_defensa.json",
-            ruta_modelo=config.entrenamiento_raiz / "modelo_defensa.json",
-        ) if config.token_entrenamiento else None
+        ZonaEntrenamiento(config.entrenamiento_raiz) if config.token_entrenamiento else None
     )
 
     @asynccontextmanager
@@ -529,6 +527,10 @@ def crear_app(config: Config | None = None, *,
     # administrador configuro el token de entrenamiento; sin el, estas
     # rutas no existen (404), igual que si nunca se hubiera escrito este
     # bloque -- la produccion real queda exactamente igual.
+    #
+    # Atiende las cuatro disciplinas registradas en `disciplinas.py`
+    # (defensa, bateo, pitcheo, catcher): la disciplina va en la URL, nunca
+    # en el cuerpo, para que quede fijada desde el momento de la subida.
     if zona_entrenamiento is not None:
         def requiere_token_entrenamiento(request: Request) -> None:
             cabecera = request.headers.get("authorization", "")
@@ -537,13 +539,38 @@ def crear_app(config: Config | None = None, *,
                     valor.strip(), config.token_entrenamiento or ""):
                 raise ErrorHTTP(401, MENSAJE_SIN_TOKEN)
 
+        @app.get("/v1/entrenamiento/disciplinas")
+        def entrenamiento_disciplinas(_token: None = Depends(requiere_token_entrenamiento)):
+            return {
+                "disciplinas": [
+                    {
+                        "id": disciplina,
+                        "nombre": disciplinas_mod.nombre_disciplina(disciplina),
+                        "categorias": [
+                            {"id": c, "nombre": disciplinas_mod.nombre_categoria(c)}
+                            for c in disciplinas_mod.categorias(disciplina)
+                        ],
+                    }
+                    for disciplina in disciplinas_mod.DISCIPLINAS
+                ]
+            }
+
         @app.get("/v1/entrenamiento/modelo")
         def entrenamiento_estado(_token: None = Depends(requiere_token_entrenamiento)):
-            return entrenamiento_estado_modelo(
-                zona_entrenamiento.ruta_dataset, zona_entrenamiento.ruta_modelo)
+            return zona_entrenamiento.estado_todas_las_disciplinas()
 
-        @app.post("/v1/entrenamiento/videos")
+        @app.get("/v1/entrenamiento/modelo/{disciplina}")
+        def entrenamiento_estado_disciplina(
+            disciplina: str, _token: None = Depends(requiere_token_entrenamiento),
+        ):
+            try:
+                return zona_entrenamiento.estado_modelo(disciplina)
+            except DisciplinaDesconocida as err:
+                raise ErrorHTTP(404, str(err))
+
+        @app.post("/v1/entrenamiento/{disciplina}/videos")
         def entrenamiento_subir(
+            disciplina: str,
             archivo: UploadFile | None = File(default=None),
             _token: None = Depends(requiere_token_entrenamiento),
         ):
@@ -551,11 +578,13 @@ def crear_app(config: Config | None = None, *,
             if archivo is None or not archivo.filename:
                 raise ErrorHTTP(400, MENSAJE_SIN_VIDEO)
             try:
-                video = zona_entrenamiento.subir(archivo.filename, archivo.file)
+                video = zona_entrenamiento.subir(disciplina, archivo.filename, archivo.file)
+            except DisciplinaDesconocida as err:
+                raise ErrorHTTP(404, str(err))
             except ArchivoDePracticaNoAceptado as err:
                 raise ErrorHTTP(415, str(err))
             return JSONResponse(status_code=201, content={
-                "id": video.id, "nombre": video.nombre,
+                "id": video.id, "nombre": video.nombre, "disciplina": video.disciplina,
             })
 
         @app.post("/v1/entrenamiento/videos/{identificador}/entrenar")
@@ -572,7 +601,7 @@ def crear_app(config: Config | None = None, *,
                 )
             except VideoDePracticaNoEncontrado as err:
                 raise ErrorHTTP(404, str(err))
-            except ValueError as err:
+            except (ValueError, DisciplinaDesconocida) as err:
                 raise ErrorHTTP(400, str(err))
             return {
                 "ejemplos_agregados": resultado.ejemplos_agregados,

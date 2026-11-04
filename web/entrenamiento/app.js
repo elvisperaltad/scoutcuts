@@ -4,12 +4,19 @@
  * distinta, y el backend guarda los videos de practica en una carpeta
  * separada de los trabajos reales (ver cortador.servidor.entrenamiento).
  * Vanilla JS sin dependencias, igual que el resto del sitio.
+ *
+ * Atiende las cuatro disciplinas entrenables (defensa, bateo, pitcheo,
+ * catcher) desde la misma pantalla: el QA elige cual entrenar con un
+ * selector, y las categorias/rotulos vienen del servidor
+ * (/v1/entrenamiento/disciplinas), nunca hardcodeadas aqui -- asi una
+ * disciplina nueva no requiere tocar este archivo.
  */
 (function () {
   "use strict";
 
   var API_BASE = "";
   var CLAVE_CODIGO = "scoutcuts_codigo_entrenamiento";
+  var CLAVE_DISCIPLINA = "scoutcuts_disciplina_entrenamiento";
 
   var pantallaLogin = document.getElementById("pantalla-login");
   var pantallaApp = document.getElementById("pantalla-app");
@@ -18,6 +25,7 @@
   var errorLogin = document.getElementById("error-login");
   var btnSalir = document.getElementById("salir-entrenamiento");
 
+  var selectorDisciplina = document.getElementById("selector-disciplina");
   var resumenModelo = document.getElementById("resumen-modelo");
   var zonaSubida = document.getElementById("zona-subida");
   var textoZonaSubida = document.getElementById("texto-zona-subida");
@@ -30,7 +38,7 @@
   var valorTiro = document.getElementById("valor-tiro");
   var btnMarcarInicio = document.getElementById("btn-marcar-inicio");
   var btnMarcarTiro = document.getElementById("btn-marcar-tiro");
-  var botonesCategoria = document.querySelectorAll(".categorias button");
+  var contenedorCategorias = document.getElementById("categorias");
   var errorJugada = document.getElementById("error-jugada");
   var btnAgregarJugada = document.getElementById("btn-agregar-jugada");
   var listaJugadas = document.getElementById("lista-jugadas");
@@ -41,7 +49,9 @@
   var listaFeedback = document.getElementById("lista-feedback");
   var btnOtroVideo = document.getElementById("btn-otro-video");
 
-  var NOMBRES_CATEGORIA = { adelante: "adelante", derecha: "derecha", izquierda: "izquierda" };
+  var disciplinas = [];           // [{id, nombre, categorias: [{id, nombre}]}]
+  var disciplinaActual = null;    // id de la disciplina elegida
+  var nombresCategoria = {};      // id -> nombre legible, de la disciplina actual
 
   var videoActualId = null;
   var videoActualNombre = null;
@@ -59,6 +69,13 @@
   }
   function borrarCodigo() {
     try { window.localStorage.removeItem(CLAVE_CODIGO); } catch (err) { /* ver PWA */ }
+  }
+  function disciplinaGuardada() {
+    try { return window.localStorage.getItem(CLAVE_DISCIPLINA) || ""; }
+    catch (err) { return ""; }
+  }
+  function guardarDisciplina(id) {
+    try { window.localStorage.setItem(CLAVE_DISCIPLINA, id); } catch (err) { /* ver PWA */ }
   }
 
   function mostrarPantalla(pantalla) {
@@ -89,16 +106,75 @@
     return valor.toFixed(1) + "s";
   }
 
-  function cargarEstadoModelo() {
-    peticion("/v1/entrenamiento/modelo").then(function (estado) {
-      var cubiertas = estado.categorias.filter(function (c) {
-        return (estado.ejemplos_por_categoria[c] || 0) > 0;
+  function disciplina(id) {
+    for (var i = 0; i < disciplinas.length; i++) {
+      if (disciplinas[i].id === id) return disciplinas[i];
+    }
+    return null;
+  }
+
+  // --- Carga inicial: que disciplinas existen, con que categorias ---
+  function cargarDisciplinas() {
+    return peticion("/v1/entrenamiento/disciplinas").then(function (respuesta) {
+      disciplinas = respuesta.disciplinas;
+      selectorDisciplina.innerHTML = "";
+      disciplinas.forEach(function (d) {
+        var opcion = document.createElement("option");
+        opcion.value = d.id;
+        opcion.textContent = d.nombre;
+        selectorDisciplina.appendChild(opcion);
       });
+      var preferida = disciplinaGuardada();
+      disciplinaActual = disciplina(preferida) ? preferida : disciplinas[0].id;
+      selectorDisciplina.value = disciplinaActual;
+      aplicarDisciplina(disciplinaActual);
+    }).catch(function () {
+      resumenModelo.textContent = "No se pudo cargar la lista de disciplinas.";
+    });
+  }
+
+  function aplicarDisciplina(id) {
+    disciplinaActual = id;
+    guardarDisciplina(id);
+    var actual = disciplina(id);
+    nombresCategoria = {};
+    contenedorCategorias.innerHTML = "";
+    (actual ? actual.categorias : []).forEach(function (c) {
+      nombresCategoria[c.id] = c.nombre;
+      var boton = document.createElement("button");
+      boton.setAttribute("data-categoria", c.id);
+      boton.textContent = c.nombre;
+      boton.addEventListener("click", function () {
+        categoriaElegida = boton.getAttribute("data-categoria");
+        Array.prototype.forEach.call(contenedorCategorias.children, function (b) {
+          b.classList.toggle("elegida", b === boton);
+        });
+        actualizarBotonAgregar();
+      });
+      contenedorCategorias.appendChild(boton);
+    });
+    cargarEstadoModelo();
+    // Cambiar de disciplina a mitad de un video sin entrenar causaria
+    // confusion (las categorias ya no corresponden); se oculta el marcado
+    // en vez de dejarlo con botones de la disciplina anterior.
+    tarjetaMarcado.style.display = "none";
+    tarjetaFeedback.style.display = "none";
+    videoActualId = null;
+    videoActualNombre = null;
+    textoZonaSubida.textContent = "Toca para elegir un video";
+  }
+
+  selectorDisciplina.addEventListener("change", function () {
+    aplicarDisciplina(selectorDisciplina.value);
+  });
+
+  function cargarEstadoModelo() {
+    peticion("/v1/entrenamiento/modelo/" + disciplinaActual).then(function (estado) {
       var html = "Ha visto <b>" + estado.total_ejemplos + "</b> jugada(s) en total.<br>";
       html += estado.categorias.map(function (c) {
         var n = estado.ejemplos_por_categoria[c] || 0;
         var clase = n > 0 ? "pastilla-categoria cubierta" : "pastilla-categoria";
-        return '<span class="' + clase + '">' + NOMBRES_CATEGORIA[c] + ": " + n + "</span>";
+        return '<span class="' + clase + '">' + (nombresCategoria[c] || c) + ": " + n + "</span>";
       }).join(" ");
       html += "<br>" + (estado.modelo_calibrado
         ? "El modelo ya puede dar una opinión."
@@ -116,7 +192,9 @@
     jugadas = [];
     valorInicio.textContent = "sin marcar";
     valorTiro.textContent = "sin marcar";
-    botonesCategoria.forEach(function (b) { b.classList.remove("elegida"); });
+    Array.prototype.forEach.call(contenedorCategorias.children, function (b) {
+      b.classList.remove("elegida");
+    });
     actualizarListaJugadas();
     actualizarBotonAgregar();
   }
@@ -132,7 +210,7 @@
     jugadas.forEach(function (j, indice) {
       var li = document.createElement("li");
       var texto = document.createElement("span");
-      texto.textContent = NOMBRES_CATEGORIA[j.categoria] + " · " +
+      texto.textContent = (nombresCategoria[j.categoria] || j.categoria) + " · " +
         formatoSegundos(j.inicio) + " → " + formatoSegundos(j.tiro);
       var quitar = document.createElement("button");
       quitar.className = "jugada-quitar";
@@ -157,7 +235,7 @@
     guardarCodigo(codigo);
     errorLogin.textContent = "";
     mostrarPantalla(pantallaApp);
-    cargarEstadoModelo();
+    cargarDisciplinas();
   });
 
   btnSalir.addEventListener("click", function () {
@@ -168,7 +246,7 @@
 
   if (codigoGuardado()) {
     mostrarPantalla(pantallaApp);
-    cargarEstadoModelo();
+    cargarDisciplinas();
   }
 
   // --- Subida de video ---
@@ -181,7 +259,7 @@
     textoZonaSubida.textContent = "Subiendo " + archivo.name + "...";
     var datosForma = new FormData();
     datosForma.append("archivo", archivo);
-    peticion("/v1/entrenamiento/videos", { method: "POST", body: datosForma })
+    peticion("/v1/entrenamiento/" + disciplinaActual + "/videos", { method: "POST", body: datosForma })
       .then(function (respuesta) {
         videoActualId = respuesta.id;
         videoActualNombre = respuesta.nombre;
@@ -212,14 +290,6 @@
     actualizarBotonAgregar();
   });
 
-  botonesCategoria.forEach(function (boton) {
-    boton.addEventListener("click", function () {
-      categoriaElegida = boton.getAttribute("data-categoria");
-      botonesCategoria.forEach(function (b) { b.classList.toggle("elegida", b === boton); });
-      actualizarBotonAgregar();
-    });
-  });
-
   btnAgregarJugada.addEventListener("click", function () {
     errorJugada.textContent = "";
     if (tiroMarcado <= inicioMarcado) {
@@ -235,7 +305,9 @@
     categoriaElegida = null;
     valorInicio.textContent = "sin marcar";
     valorTiro.textContent = "sin marcar";
-    botonesCategoria.forEach(function (b) { b.classList.remove("elegida"); });
+    Array.prototype.forEach.call(contenedorCategorias.children, function (b) {
+      b.classList.remove("elegida");
+    });
     actualizarBotonAgregar();
     actualizarListaJugadas();
   });
@@ -273,7 +345,7 @@
     listaFeedback.innerHTML = "";
     resultado.evaluacion.forEach(function (fila) {
       var div = document.createElement("div");
-      var marcada = NOMBRES_CATEGORIA[fila.categoria_marcada];
+      var marcada = nombresCategoria[fila.categoria_marcada] || fila.categoria_marcada;
       if (fila.categoria_predicha === null) {
         div.className = "feedback-jugada";
         div.innerHTML = '<div class="titulo">Jugada marcada: ' + marcada + "</div>" +
@@ -283,7 +355,7 @@
         div.innerHTML = '<div class="titulo">✓ El modelo coincidió: ' + marcada + "</div>" +
           '<div class="detalle">Lo reconoció ' + nivelConfianza(fila.confianza) + ".</div>";
       } else {
-        var predicha = NOMBRES_CATEGORIA[fila.categoria_predicha];
+        var predicha = nombresCategoria[fila.categoria_predicha] || fila.categoria_predicha;
         div.className = "feedback-jugada diferente";
         div.innerHTML = '<div class="titulo">El modelo no coincidió</div>' +
           '<div class="detalle">Tú marcaste <b>' + marcada + "</b>, pero el modelo creyó que era <b>" +
