@@ -1,5 +1,38 @@
 # Bitácora
 
+## 2026-11-04 (mañana) · Actualizacion de version del service worker de la PWA
+
+Al continuar el desarrollo tras el despliegue inicial de la PWA, revise el propio codigo que
+acababa de entregar en busca de huecos reales antes de darlo por cerrado. Encontre uno: el
+`sw.js` original cacheaba el cascaron estatico pero no tenia ninguna via para que un scout con
+la PWA ya instalada se enterara de una version nueva. Un service worker nuevo se queda en
+estado "waiting" hasta que se cierren todas las pestañas que usan el viejo -- en una app que
+se usa como app instalada (sin barra de navegador, sin boton de recargar visible), eso puede
+no pasar nunca. Sin corregirlo, cada deploy futuro de `web/` quedaria invisible para quien ya
+la instalo.
+
+Corregido con el patron estandar de PWA: `sw.js` ya NO activa el worker nuevo solo
+(`skipWaiting()` automatico recargaria la pagina sin avisar, posiblemente a mitad de una
+subida de video); en vez de eso espera un mensaje explicito `{tipo: "activar"}` que `app.js`
+solo envia cuando el scout pulsa un aviso visible ("Hay una version nueva disponible" +
+boton "Actualizar"). `app.js` escucha `controllerchange` para recargar la pagina sola tras la
+activacion, pero SOLO si no hay una subida en curso (`barraProgreso.style.display !==
+"block"`) -- si la hay, la recarga se deja pendiente hasta que termine. `CACHE` subio a
+`scoutcuts-v2` para que el cambio mismo se autoverifique en produccion.
+
+Verificado con el navegador real contra un proxy local (mismo patron que la verificacion
+original de la PWA): instale la v2 limpia, confirme que activa sola sin aviso (primera
+instalacion, nada que avisar); luego sustitui temporalmente `sw.js` por una variante con
+`CACHE` distinto para simular un deploy nuevo, dispare `registration.update()`, confirme que
+el SW nuevo queda en "waiting" sin activarse solo, que el aviso aparece en pantalla de verdad
+(snapshot del DOM, no solo lectura de estado), y que al pulsar "Actualizar" el SW toma control,
+la cache vieja se borra (`caches.keys()` solo devuelve la nueva) y la pagina se recarga sola.
+Restaure el `sw.js` real despues de la prueba.
+
+Suite completa: 267/267 en verde (no hay tests Python para JS/service worker; la verificacion
+de este cambio es necesariamente con navegador real, no con pytest). Desplegado a produccion
+con `desplegar.sh` tras la verificacion.
+
 ## 2026-11-04 (madrugada) · PWA construida y desplegada en scoutcuts.com
 
 El usuario pidio directamente "construye la PWA": hasta este punto `scoutcuts.com` solo

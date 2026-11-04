@@ -23,6 +23,8 @@
   var rellenoProgreso = document.getElementById("relleno-progreso");
   var listaTrabajos = document.getElementById("lista-trabajos");
   var listaVacia = document.getElementById("lista-vacia");
+  var avisoActualizacion = document.getElementById("aviso-actualizacion");
+  var btnActualizar = document.getElementById("btn-actualizar");
 
   var archivoElegido = null;
   var temporizadorActualizacion = null;
@@ -319,10 +321,43 @@
 
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", function () {
-      navigator.serviceWorker.register("/sw.js").catch(function () {
+      navigator.serviceWorker.register("/sw.js").then(function (registro) {
+        // Si ya hay un SW esperando (se instalo mientras la pestaña estaba
+        // cerrada), avisar de inmediato; si no, esperar a que aparezca uno.
+        if (registro.waiting) {
+          mostrarAvisoActualizacion(registro.waiting);
+        }
+        registro.addEventListener("updatefound", function () {
+          var nuevo = registro.installing;
+          if (!nuevo) return;
+          nuevo.addEventListener("statechange", function () {
+            if (nuevo.state === "installed" && navigator.serviceWorker.controller) {
+              mostrarAvisoActualizacion(nuevo);
+            }
+          });
+        });
+      }).catch(function () {
         /* sin service worker la app sigue funcionando, solo que no instalable */
       });
+
+      var recargando = false;
+      navigator.serviceWorker.addEventListener("controllerchange", function () {
+        // No recargar si hay una subida en curso: perderia el progreso sin
+        // avisar. En ese caso se recarga sola en cuanto termine la subida.
+        if (recargando) return;
+        if (barraProgreso.style.display === "block") return;
+        recargando = true;
+        window.location.reload();
+      });
     });
+  }
+
+  function mostrarAvisoActualizacion(workerNuevo) {
+    if (!avisoActualizacion) return;
+    avisoActualizacion.style.display = "flex";
+    btnActualizar.onclick = function () {
+      workerNuevo.postMessage({ tipo: "activar" });
+    };
   }
 
   var codigoExistente = codigoGuardado();

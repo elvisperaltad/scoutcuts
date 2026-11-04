@@ -146,6 +146,23 @@
     text-decoration: none;
   }
   #salir { margin-top: 4px; }
+  .aviso-actualizacion {
+    display: none;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--tarjeta);
+    border-top: 1px solid var(--borde);
+    padding: 12px 16px;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    z-index: 10;
+  }
+  .aviso-actualizacion span { font-size: 13px; }
+  .aviso-actualizacion button { width: auto; padding: 8px 14px; font-size: 13px; }
 </style>
 </head>
 <body>
@@ -201,6 +218,11 @@
 </section>
 
 <footer>ScoutCuts · scoutcuts.com</footer>
+
+<div class="aviso-actualizacion" id="aviso-actualizacion">
+  <span>Hay una versión nueva disponible.</span>
+  <button id="btn-actualizar">Actualizar</button>
+</div>
 
 <script src="/app.js"></script>
 </body>
