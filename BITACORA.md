@@ -1,5 +1,36 @@
 # Bitácora
 
+## 2026-11-04 (tarde, segunda continuacion) · Rotacion segura del token QA
+
+Segundo "sigue" consecutivo: tome el siguiente pendiente avanzable sin decision
+externa, el punto 3 de CONTINUAR_SERVIDOR.md (rotacion/revocacion del token QA),
+que hasta ahora era "regenerarlo a mano y reiniciar" sin ninguna red de seguridad.
+
+`despliegue/rotar-token-qa.sh` genera un token nuevo, respalda el archivo completo
+antes de tocarlo (`app.env.bak-<timestamp>`), reemplaza SOLO la linea
+`SCOUTCUTS_TOKEN_QA=` preservando el resto intacto, reinicia el servicio y prueba
+`/salud`. Si no vuelve a responder 200, REVIERTE solo al token anterior y reinicia
+otra vez -- la diferencia real entre automatizar esto y dejarlo "a mano": un typo
+o un reinicio que no levanta no deja la API caida esperando que alguien note el
+problema.
+
+TDD con 4 pruebas (`tests/despliegue/test_rotar_token_qa.py`): rota preservando el
+resto del archivo, respalda el token viejo, revierte ante un fallo real simulado
+(servidor HTTP falso devolviendo 503), y falla limpio sin tocar nada si no existe
+el archivo de variables. Como `systemctl` no existe en la maquina de pruebas,
+inyecte un `systemctl` falso (no-op exitoso) al principio del PATH -- mismo
+patron que ya se usa para los scripts de purga/monitoreo.
+
+Encontre y corregi un bug real en el camino, no cosmetico: el script generaba el
+token nuevo con `python3 -c '...'`, pero en Windows `python3` SI existe en el
+PATH como un stub roto del Microsoft Store que falla con un mensaje de
+instalacion en vez de ejecutar Python real -- `command -v python3` lo habria dado
+por bueno igual. Lo corregi probando cada candidato (`python3`, `python`)
+EJECUTANDOLO de verdad (`import secrets`) antes de confiar en el, no solo
+comprobando que el comando "existe".
+
+Commit y push a GitHub; documentado en CONTINUAR_SERVIDOR.md.
+
 ## 2026-11-04 (tarde, continuacion) · Monitoreo de salud con alerta por Telegram
 
 El usuario pidio "continua el desarrollo" sin especificar que, asi que tome el

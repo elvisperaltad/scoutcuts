@@ -224,8 +224,20 @@ funcione. Cópialos a mano a `<release>/perfiles/` (propiedad `root:cortador`,
    auto-registra); (e) desplegar con `desplegar.sh` normal (no requiere
    cambios en nginx ni en systemd: el bot corre dentro del mismo proceso
    `scoutcuts.service`, en un hilo daemon aparte).
-3. **Rotación/revocación del token QA** si se filtra. Por ahora, regenerarlo
-   a mano en `/etc/cortador-control/app.env` y reiniciar el servicio.
+3. **Rotación/revocación del token QA — IMPLEMENTADO (2026-11-04).**
+   `despliegue/rotar-token-qa.sh` genera un token nuevo, respalda el
+   anterior (`app.env.bak-<timestamp>`), reemplaza SOLO la linea
+   `SCOUTCUTS_TOKEN_QA=` (preserva el resto del archivo intacto), reinicia
+   el servicio, y prueba `/salud`. Si no vuelve a responder 200, REVIERTE
+   automaticamente al token anterior y restaura el servicio, en vez de
+   dejar la API caida por un error en la rotacion. Nunca imprime ningun
+   valor de token en pantalla ni en logs. Uso en el servidor, como root:
+   `bash despliegue/rotar-token-qa.sh`. 4 pruebas nuevas
+   (`tests/despliegue/test_rotar_token_qa.py`) contra un `systemctl` falso
+   inyectado por PATH (no existe systemd en la maquina de pruebas) y un
+   servidor HTTP falso para `/salud`. Pendiente real, no de codigo: avisar
+   a quien tenga el token QA actual (si alguien externo lo usa) de que
+   cambio, porque el viejo deja de servir de inmediato.
 4. **Monitoreo/alertas — IMPLEMENTADO (2026-11-04).** `despliegue/monitor-salud.sh`
    revisa cada 5 minutos (`scoutcuts-monitor.timer`) tres cosas en orden:
    `scoutcuts.service` activo, `nginx` activo, y la ruta PUBLICA real
@@ -313,7 +325,7 @@ En el proyecto local y copiados al servidor bajo `/opt/cortador-control/docs/`:
   `despliegue/desplegar.sh`, `despliegue/verificar-despliegue.sh`,
   `despliegue/scoutcuts-purga.service`, `despliegue/scoutcuts-purga.timer`,
   `despliegue/scoutcuts-monitor.service`, `despliegue/scoutcuts-monitor.timer`,
-  `despliegue/monitor-salud.sh`.
+  `despliegue/monitor-salud.sh`, `despliegue/rotar-token-qa.sh`.
 
 ## Qué no hacer
 
