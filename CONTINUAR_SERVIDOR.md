@@ -291,9 +291,9 @@ funcione. Cópialos a mano a `<release>/perfiles/` (propiedad `root:cortador`,
    borre. Motivo: un video de defensa/pitcheo/catcher subido por la PWA cae
    hoy en ese estado (ver punto 7) y se borraria en 24h sin que nadie lo
    revisara.**
-7. **Deteccion automatica de defensa — MODELO PEQUENO INCREMENTAL, conectado
-   a su propia zona web de entrenamiento (2026-11-04/05), AUN SIN DESPLEGAR
-   AL SERVIDOR.**
+7. **Deteccion automatica de defensa, bateo, pitcheo y catcher — MODELO
+   PEQUENO INCREMENTAL, con su propia zona web de entrenamiento
+   (2026-11-04/05), DESPLEGADO Y VERIFICADO EN VIVO.**
    `src/cortador/defensa_ml.py`: cada vez que una persona marca un video con
    `cortador defensa` (manifiesto `.defensa.json` -> 6 repeticiones), el
    comando extrae 3 numeros por repeticion (duracion, fuerza del pico de
@@ -310,7 +310,9 @@ funcione. Cópialos a mano a `<release>/perfiles/` (propiedad `root:cortador`,
    Para apagarlo en una entrega puntual: `cortador defensa ... --sin-entrenar`.
    Si el entrenamiento falla por cualquier razon, la exportacion del video
    al cliente sigue funcionando igual -- nunca se bloquea una entrega por
-   un fallo de aprendizaje.
+   un fallo de aprendizaje. Este modulo (defensa en el comando real
+   `cortador defensa`) quedo intacto cuando se generalizo la zona web --
+   es el que sigue entrenando el modelo que de verdad usa el cliente.
    **Medicion real y honesta, no un numero inventado:** calibrado con el
    UNICO video marcado que existe (`Video/Luis Abreu/S1440022.MP4`, 6
    repeticiones), el modelo clasifica bien "derecha" e "izquierda" (4/4)
@@ -319,83 +321,116 @@ funcione. Cópialos a mano a `<release>/perfiles/` (propiedad `root:cortador`,
    en los aciertos, que es el comportamiento buscado: dudar cuando duda, en
    vez de inventar una categoria segura que no lo es. Con 1 video no hay
    patron generalizable todavia; mejorara solo con mas videos marcados.
-   21 pruebas (`tests/test_defensa_ml.py`, `tests/servidor/test_entrenamiento.py`,
-   `tests/servidor/test_api_entrenamiento.py`), incluyendo pipelines
-   completos contra video real sintetico (OpenCV genera un video con
-   movimiento real, se extraen caracteristicas, se calibra, y se clasifica
-   un video nunca visto por el modelo) y un flujo HTTP de punta a punta
-   (subir -> marcar -> entrenar -> feedback -> borrado del video). Mas 2
-   pruebas en `tests/test_defensa.py` para la integracion con el comando CLI.
-   **NUEVO: zona web de entrenamiento `scoutcuts.com/entrenamiento`**
-   (pedido explicito del usuario: "subelo a la web para que el QA pruebe y
-   lo entrene... y que el modelo le envie los feedbacks ahi mismo"). Flujo:
-   el QA sube un video de practica, lo marca jugada por jugada en el propio
+
+   **Zona web de entrenamiento `scoutcuts.com/entrenamiento`** (pedido
+   explicito del usuario: "subelo a la web para que el QA pruebe y lo
+   entrene... y que el modelo le envie los feedbacks ahi mismo", extendida
+   despues con "quiero que pueda entrenar pitcheo y catcher tambien y
+   bateo todo en la web"). Flujo: el QA elige la disciplina en un selector,
+   sube un video de practica, lo marca jugada por jugada en el propio
    navegador (sin exponer JSON ni rutas), cada marca se entrena al instante
    y el QA ve de inmediato si el modelo coincidio o no con su categoria y
    con cuanta confianza -- el video se borra automaticamente en el mismo
    momento en que se entrena, nunca despues.
+
+   **Generalizada a 4 disciplinas (defensa, bateo, pitcheo, catcher; VP
+   live queda fuera por decision explicita del usuario: "olvida el vp live
+   por ahora"):** `src/cortador/disciplinas.py` es el registro central de
+   categorias por disciplina. Defensa usa adelante/derecha/izquierda
+   (validado con datos reales del cliente); bateo reusa el vocabulario ya
+   existente de valido/invalido (`marcas.py`); **pitcheo (strike/bola) y
+   catcher (recibido/bloqueo/tiro) son una PRIMERA PROPUESTA del asistente,
+   no un criterio validado por el cliente** -- el cliente nunca definio
+   categorias para estas dos disciplinas; son ajustables en un solo archivo
+   sin tocar nada mas del sistema si el cliente pide otro criterio.
+   `movimiento.py`, `repeticiones.py`, `ml_generico.py` generalizan la
+   extraccion de caracteristicas, validacion y el modelo pequeno (mismo
+   diseno de perfiles estadisticos, nunca redes neuronales) para cualquier
+   disciplina -- cada una con su propio dataset/modelo en disco, nunca
+   compartido entre si ni con el de produccion real de defensa.
+
    Aislamiento total de produccion real, por diseno (preferencia explicita
    del usuario de separar sandbox de integracion real): token propio
    `SCOUTCUTS_TOKEN_ENTRENAMIENTO` (nunca el `SCOUTCUTS_TOKEN_QA` de
    produccion -- probado que uno no abre al otro), carpeta propia
    `SCOUTCUTS_ENTRENAMIENTO` (default `datos/entrenamiento_qa`, nunca
-   `datos/trabajos`), y dataset/modelo propios dentro de esa carpeta
-   (nunca `modelos/dataset_defensa.json` de produccion -- mezclarlos
-   contaminaria el modelo real con practicas de QA). Nuevo modulo
-   `src/cortador/servidor/entrenamiento.py` (`ZonaEntrenamiento`): sube,
+   `datos/trabajos`), y dataset/modelo propios POR DISCIPLINA dentro de esa
+   carpeta (nunca `modelos/dataset_defensa.json` de produccion -- mezclarlos
+   contaminaria el modelo real con practicas de QA). Modulo
+   `src/cortador/servidor/entrenamiento.py` (`ZonaEntrenamiento`): sube
+   (con la disciplina fijada desde la subida, nunca desde el manifiesto),
    valida, entrena con UNA repeticion a la vez (a diferencia del manifiesto
    de entrega al cliente, que exige el paquete 2+2+2 completo), evalua la
    propia jugada que se acaba de aprender para dar feedback honesto, borra
    el video, y limpia videos de practica huerfanos tras 24h si el QA nunca
-   completo el marcado. Endpoints nuevos en `api.py`:
-   `GET /v1/entrenamiento/modelo`, `POST /v1/entrenamiento/videos`,
+   completo el marcado. Endpoints en `api.py`:
+   `GET /v1/entrenamiento/disciplinas`, `GET /v1/entrenamiento/modelo`,
+   `GET /v1/entrenamiento/modelo/{disciplina}`,
+   `POST /v1/entrenamiento/{disciplina}/videos`,
    `POST /v1/entrenamiento/videos/{id}/entrenar` -- solo se registran si
    `SCOUTCUTS_TOKEN_ENTRENAMIENTO` esta configurado; sin el, estas rutas no
    existen (404), la produccion real queda exactamente igual. Frontend
-   nuevo `web/entrenamiento/` (HTML/JS vanilla, mismo estilo que la PWA):
-   login por codigo, reproductor de video con botones "marcar inicio"/
-   "marcar tiro", categoria, lista de jugadas marcadas, boton de entrenar,
-   y tarjeta de feedback en lenguaje simple ("el modelo coincidio" / "el
-   modelo creyo que era X, ya aprendio de tu correccion") -- nunca JSON
-   crudo, nunca confianza numerica sin traducir. `nginx-scoutcuts.conf`
-   reenvia `/v1/entrenamiento/*` al mismo backend bajo el mismo origen que
-   `scoutcuts.com`; `desplegar.sh` genera `SCOUTCUTS_TOKEN_ENTRENAMIENTO`
-   la primera vez (igual que el token QA) y crea
-   `$DATOS/entrenamiento_qa`.
-   **DESPLEGADO Y VERIFICADO EN VIVO (2026-11-04, noche):** release
-   `20261104203715` activa. Probado desde fuera contra el dominio real,
-   no solo localhost: `scoutcuts.com/entrenamiento/` responde 200 con el
-   HTML/JS nuevos; `GET /v1/entrenamiento/modelo` sin token da 401; con
+   `web/entrenamiento/` (HTML/JS vanilla, mismo estilo que la PWA): login
+   por codigo, selector de disciplina (categorias dinamicas segun la
+   elegida, nunca hardcodeadas en el frontend), reproductor de video con
+   botones "marcar inicio"/"marcar tiro", categoria, lista de jugadas
+   marcadas, boton de entrenar, y tarjeta de feedback en lenguaje simple
+   ("el modelo coincidio" / "el modelo creyo que era X, ya aprendio de tu
+   correccion") -- nunca JSON crudo, nunca confianza numerica sin traducir.
+   `nginx-scoutcuts.conf` reenvia `/v1/entrenamiento/*` al mismo backend
+   bajo el mismo origen que `scoutcuts.com`; `desplegar.sh` genera
+   `SCOUTCUTS_TOKEN_ENTRENAMIENTO` la primera vez (igual que el token QA) y
+   crea `$DATOS/entrenamiento_qa`.
+
+   28 pruebas entre `tests/test_defensa_ml.py`,
+   `tests/servidor/test_entrenamiento.py` y
+   `tests/servidor/test_api_entrenamiento.py` (incluye aislamiento entre
+   disciplinas: entrenar bateo nunca toca el dataset de defensa, ni al
+   reves), mas 2 en `tests/test_defensa.py` para la integracion con el
+   comando CLI. Suite completa: 320 pasan, 2 skip.
+
+   **DESPLEGADO Y VERIFICADO EN VIVO dos veces (2026-11-04 noche: zona
+   solo-defensa; 2026-11-05 madrugada: extension a bateo/pitcheo/catcher).**
+   Release activa tras la segunda extension. Probado desde fuera contra el
+   dominio real, no solo localhost: `scoutcuts.com/entrenamiento/` responde
+   200 con el HTML/JS nuevos (selector de disciplina incluido);
+   `GET /v1/entrenamiento/disciplinas` devuelve las 4 disciplinas con sus
+   categorias; `GET /v1/entrenamiento/modelo` sin token da 401; con
    `SCOUTCUTS_TOKEN_ENTRENAMIENTO` da 200; con el token de PRODUCCION
    (`SCOUTCUTS_TOKEN_QA`) da 401 -- aislamiento de credenciales confirmado
-   en el servidor real, no solo en pruebas locales. Flujo completo subir
-   -> marcar -> entrenar -> feedback probado con un video sintetico real
-   contra `api.scoutcuts.com`: respondio con feedback correcto y el video
-   se borro de inmediato (`entrenamiento_qa/videos/` quedo vacio, solo
-   quedaron los 3 numeros en el dataset). El dataset/modelo de PRODUCCION
-   (`modelos/dataset_defensa.json`, 6 ejemplos reales) se verifico intacto
-   despues de esta prueba -- no se contamino. El video y dataset de prueba
-   se borraron despues de verificar, dejando la zona en 0 ejemplos para
-   el primer uso real del QA.
+   en el servidor real. Flujo completo subir -> marcar -> entrenar ->
+   feedback probado con un video sintetico real contra `api.scoutcuts.com`
+   subido como **bateo** (no defensa, para probar la generalizacion de
+   verdad): respondio con feedback correcto ("aun falta la categoria
+   invalido") y el video se borro de inmediato; el dataset de bateo quedo
+   con 1 ejemplo y el de defensa en 0 -- sin contaminacion entre
+   disciplinas. El dataset/modelo de PRODUCCION real de defensa
+   (`modelos/dataset_defensa.json`, 6 ejemplos reales) se verifico con hash
+   sha256 identico antes y despues de ambos despliegues -- nunca se toco.
+   El video y dataset de prueba de bateo se borraron despues de verificar,
+   dejando las 4 disciplinas en 0 ejemplos para el primer uso real del QA.
    **Huella de memoria real, medida, no estimada:** con la zona de
-   entrenamiento activa (opencv cargado), el servicio completo usa 90MB de
-   RAM (`systemctl status scoutcuts`, campo Memory) de los 950MB totales
-   del VPS -- la preocupacion de que el modelo no cupiera en memoria
-   quedo resuelta: hay margen de sobra.
+   entrenamiento activa (opencv cargado), el servicio completo usa
+   ~180MB de RAM (`systemctl status scoutcuts`, campo Memory) de los 950MB
+   totales del VPS -- la preocupacion de que el modelo no cupiera en
+   memoria quedo resuelta: hay margen de sobra.
    Pendiente real que queda: que un QA humano lo use desde su propio
-   telefono/laptop y de feedback -- lo demas ya esta en produccion.
-8. **Pitcheo y catcher — SIGUE SIN EXISTIR.** Ni categorias definidas, ni
-   reglas de que cuenta como jugada completa, ni un solo ejemplo marcado:
-   el enfoque de arriba (extraer numeros, nunca guardar el video) se podria
-   aplicar igual aqui en cuanto haya 1 ejemplo marcado de cada categoria,
-   pero no hay ninguno. En el servidor solo existen 3 perfiles de camara
-   manuales ligados a un video especifico (`academia_video1.json`,
+   telefono/laptop y de feedback -- lo demas ya esta en produccion; y que
+   el cliente valide o corrija las categorias propuestas para pitcheo y
+   catcher.
+8. **Pitcheo y catcher — zona de entrenamiento lista, pero SIN categorias
+   validadas por el cliente.** La infraestructura (subida, marcado,
+   entrenamiento, feedback, borrado) ya funciona en produccion para estas
+   dos disciplinas (ver punto 7), pero las categorias que se usan hoy
+   (strike/bola para pitcheo; recibido/bloqueo/tiro para catcher) son una
+   propuesta del asistente, nunca confirmadas por el cliente. Falta que el
+   cliente defina: cuantos clips por entrega, que cuenta como jugada
+   completa, desde que angulo de camara se grabara cada una, y si esas
+   categorias son las correctas. Ajustable en `src/cortador/disciplinas.py`
+   sin tocar nada mas del sistema. En el servidor solo existen 3 perfiles
+   de camara manuales ligados a un video especifico (`academia_video1.json`,
    `axel_img_0682.json`, `luis_abreu_s1440015.json`).
-   Antes de construir nada de esto hace falta que el cliente defina:
-   cuantos clips por entrega, que cuenta como jugada completa, desde que
-   angulo de camara se grabara cada una. Sin eso, cualquier deteccion
-   automatica que se escriba estaria adivinando el
-   criterio del cliente.
+
 
 ## Documentos relacionados
 

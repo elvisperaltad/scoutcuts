@@ -1,5 +1,65 @@
 # Bitácora
 
+## 2026-11-05 (madrugada) · Zona de entrenamiento extendida a bateo, pitcheo y catcher, desplegada en vivo
+
+El usuario aclaró el dominio completo de categorías: "adelante/derecha/
+izquierda" es solo la categoría **defensa**; existen también **bateo**,
+**pitcheo**, **catcher** y **VP live** (este último fuera de alcance por
+decisión explícita: "olvida el vp live por ahora"). Pidió explícitamente
+que la zona de entrenamiento web cubra también bateo, pitcheo y catcher,
+y que al terminar se deje todo publicado y los `.md` actualizados.
+
+Cambios de código (generalización, sin romper lo de defensa real):
+
+- `disciplinas.py` (nuevo): registro central de las 4 disciplinas
+  entrenables y sus categorías. Pitcheo (strike/bola) y catcher
+  (recibido/bloqueo/tiro) son una PRIMERA PROPUESTA del asistente, no un
+  criterio validado por el cliente — el cliente nunca había definido
+  categorías para estas dos disciplinas. Bateo reusa el vocabulario ya
+  existente en `marcas.py` (válido/inválido).
+- `movimiento.py`, `repeticiones.py`, `ml_generico.py` (nuevos):
+  extracción de características, validación de repeticiones y el modelo
+  pequeño (mismo diseño que `defensa_ml.py`: perfiles estadísticos por
+  categoría, nunca redes neuronales) generalizados para cualquier
+  disciplina. `defensa_ml.py` queda intacto — sigue siendo el que usa
+  `cortador defensa` en producción real con el cliente.
+- `entrenamiento.py`: `ZonaEntrenamiento` ahora recibe la disciplina al
+  subir el video y la fija ahí; cada disciplina tiene su propio
+  dataset/modelo en disco, nunca compartido entre ellas ni con el de
+  producción real de defensa.
+- `api.py`: subir video pasó a `/v1/entrenamiento/{disciplina}/videos`;
+  nuevo endpoint `/v1/entrenamiento/disciplinas` que devuelve categorías
+  por disciplina, para que el frontend no las tenga escritas a mano.
+- `web/entrenamiento/`: selector de disciplina en la pantalla principal;
+  las categorías que se muestran para marcar cambian según la disciplina
+  elegida, siempre en español simple.
+- Pruebas nuevas de aislamiento entre disciplinas (entrenar bateo nunca
+  toca el dataset de defensa, ni al revés). Suite completa: 320 pasan,
+  2 skip (sube de 311).
+
+Desplegado y verificado en vivo contra `scoutcuts.com`/`api.scoutcuts.com`
+(no solo localhost):
+
+- `/v1/entrenamiento/disciplinas` responde con las 4 disciplinas y sus
+  categorías correctas.
+- `/v1/entrenamiento/modelo` muestra las 4 en 0 ejemplos (estado inicial
+  limpio para el QA).
+- Flujo completo probado con un video sintético subido como **bateo**
+  (no defensa, para probar que la generalización funciona de verdad):
+  subir -> marcar -> entrenar -> feedback correcto ("aún falta la
+  categoría inválido") -> video borrado de inmediato -> dataset de bateo
+  con 1 ejemplo, dataset de defensa sin tocar (0 ejemplos).
+- Dataset/modelo de producción real de defensa (6 ejemplos del cliente)
+  verificado con hash idéntico antes/después de todo esto.
+- Limpié el video y dataset de prueba después de verificar, dejando las
+  4 disciplinas en 0 ejemplos para el primer uso real del QA.
+
+Pendiente: el cliente aún no ha validado si "strike/bola" y
+"recibido/bloqueo/tiro" son las categorías correctas para pitcheo y
+catcher — son una propuesta de arranque para que el QA pueda empezar a
+generar datos ya mismo, ajustable en `disciplinas.py` sin tocar nada más
+del sistema si el cliente pide otra cosa.
+
 ## 2026-11-05 (noche) · Zona de entrenamiento QA desplegada y verificada en vivo
 
 Lo construido en la entrada anterior (hoy mismo) se subió al servidor real:
