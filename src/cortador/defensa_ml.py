@@ -295,24 +295,29 @@ def actualizar_desde_manifiesto(
     *,
     ruta_dataset: str | Path | None = None,
     ruta_modelo: str | Path | None = None,
-) -> tuple[Dataset, ModeloDefensa | None]:
+) -> tuple[Dataset, ModeloDefensa | None, list[tuple[str, Caracteristicas]]]:
     """Extrae caracteristicas de las repeticiones ya elegidas por una persona
     en `manifiesto`, las agrega al dataset acumulado en disco, y recalibra
     el modelo si ya hay al menos un ejemplo de cada categoria.
 
     Debe llamarse ANTES de borrar `ruta_video`: a partir de aqui el video ya
     no hace falta para nada, solo los tres numeros por repeticion que ya
-    quedaron extraidos y guardados.
+    quedaron extraidos y guardados. Devuelve tambien la lista de
+    (categoria, caracteristicas) recien extraidas, para que quien llama
+    pueda dar feedback inmediato (p. ej. clasificarlas con el modelo
+    recalibrado) sin tener que volver a abrir el video.
     """
     ruta_dataset = Path(ruta_dataset) if ruta_dataset else ruta_dataset_por_defecto()
     ruta_modelo = Path(ruta_modelo) if ruta_modelo else ruta_modelo_por_defecto()
 
     dataset = Dataset.cargar(ruta_dataset)
+    extraidas: list[tuple[str, Caracteristicas]] = []
     for repeticion in manifiesto.seleccionadas:
         caracteristicas = extraer_caracteristicas(
             ruta_video, repeticion.inicio, repeticion.tiro
         )
         dataset.agregar(repeticion.categoria, caracteristicas)
+        extraidas.append((repeticion.categoria, caracteristicas))
     dataset.guardar(ruta_dataset)
 
     modelo = None
@@ -322,4 +327,4 @@ def actualizar_desde_manifiesto(
         pass  # todavia falta al menos una categoria; se recalibrara despues
     if modelo is not None:
         modelo.guardar(ruta_modelo)
-    return dataset, modelo
+    return dataset, modelo, extraidas

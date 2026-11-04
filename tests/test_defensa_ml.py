@@ -132,37 +132,8 @@ def test_un_solo_ejemplo_por_categoria_calibra_pero_con_desviacion_de_reserva():
         assert perfil.desv_centro_x > 0
 
 
-def _crear_video_con_movimiento_lateral(ruta, lado: str, fps: float = 20.0,
-                                         ancho: int = 320, alto: int = 240,
-                                         segundos: float = 2.0):
-    """Video sintetico real (sin ffmpeg: OpenCV puede escribirlo y leerlo
-    directamente) con un cuadrado blanco moviendose de un lado al otro del
-    encuadre, para probar la extraccion de caracteristicas contra fotogramas
-    reales, no datos inventados a mano."""
-    import cv2
-    import numpy as np
-
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    escritor = cv2.VideoWriter(str(ruta), fourcc, fps, (ancho, alto))
-    n_fotogramas = int(segundos * fps)
-    x_inicio, x_fin = (20, 20) if lado == "quieto" else (
-        (ancho - 60, 20) if lado == "izquierda" else (20, ancho - 60)
-    )
-    for i in range(n_fotogramas):
-        frame = np.zeros((alto, ancho, 3), dtype=np.uint8)
-        t = i / max(n_fotogramas - 1, 1)
-        x = int(x_inicio + (x_fin - x_inicio) * t)
-        frame[90:150, x:x + 40] = 255
-        escritor.write(frame)
-    escritor.release()
-
-
-@pytest.fixture
-def cv2_disponible():
-    try:
-        import cv2  # noqa: F401
-    except ImportError:
-        pytest.skip("opencv no esta instalado en este entorno")
+from videos_sinteticos import crear_video_con_movimiento_lateral as _crear_video_con_movimiento_lateral
+from videos_sinteticos import cv2_disponible  # noqa: F401 - fixture usada por los tests de este modulo
 
 
 def test_extraer_caracteristicas_de_un_video_real_moviendose_a_la_derecha(tmp_path, cv2_disponible):
@@ -268,7 +239,7 @@ def test_actualizar_desde_manifiesto_no_calibra_modelo_hasta_tener_las_tres_cate
     ruta_video = tmp_path / "v.mp4"
     _crear_video_con_movimiento_lateral(ruta_video, lado="quieto", segundos=1.0)
 
-    _, modelo = actualizar_desde_manifiesto(
+    _, modelo, _ = actualizar_desde_manifiesto(
         ruta_video, manifiesto,
         ruta_dataset=tmp_path / "dataset.json", ruta_modelo=tmp_path / "modelo.json",
     )

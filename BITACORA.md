@@ -1,5 +1,65 @@
 # Bitácora
 
+## 2026-11-05 · Zona web de entrenamiento QA (scoutcuts.com/entrenamiento)
+
+El usuario pidió textualmente: "subelo a la web para que el QA pruebe y lo
+entrene... y que el modelo le envie los feedbacks ahi mismo y asi el con su
+AI vaya haciendo los cambios". Hasta ahora el modelo de defensa (ver entrada
+de ayer) solo se entrenaba corriendo a mano `cortador defensa` en esta
+máquina -- nada conectado a la web.
+
+Construido en tres piezas, aisladas por completo de la PWA de producción:
+
+- `src/cortador/servidor/entrenamiento.py` (`ZonaEntrenamiento`, nuevo):
+  sube un video de práctica a una carpeta propia (nunca `datos/trabajos` de
+  clientes reales), valida las repeticiones marcadas, entrena con el mismo
+  `defensa_ml.py` de ayer, evalúa inmediatamente la jugada que se acaba de
+  aprender (para dar feedback honesto: ¿coincidió el modelo o no, con
+  cuánta confianza?), borra el video, y limpia videos huérfanos tras 24h
+  si el QA nunca completó el marcado. A diferencia del manifiesto de
+  entrega al cliente (que exige el paquete 2+2+2 completo), aquí el QA
+  puede entrenar con una sola repetición a la vez -- el objetivo es
+  feedback inmediato por jugada, no un paquete completo.
+- Tres endpoints nuevos en `api.py`, protegidos por un token DISTINTO del
+  de producción (`SCOUTCUTS_TOKEN_ENTRENAMIENTO`, nunca
+  `SCOUTCUTS_TOKEN_QA`) y verificado explícitamente que uno no abre al
+  otro: `GET /v1/entrenamiento/modelo`, `POST /v1/entrenamiento/videos`,
+  `POST /v1/entrenamiento/videos/{id}/entrenar`. Solo se registran si el
+  token está configurado; sin él, no existen (404) y la producción real
+  queda exactamente igual.
+- Frontend nuevo `web/entrenamiento/` (HTML/JS vanilla, mismo estilo oscuro
+  que la PWA): login por código, reproductor de video con "marcar inicio"/
+  "marcar tiro", botones de categoría, lista de jugadas marcadas, botón de
+  entrenar, y feedback en lenguaje simple -- nunca JSON crudo ni números de
+  confianza sin traducir ("el modelo coincidió" / "el modelo creyó que era
+  X, ya aprendió de tu corrección").
+
+Bug propio que encontré con pruebas, no en producción: al construir
+`ZonaEntrenamiento` sin especificar rutas, caía al dataset/modelo por
+DEFECTO del proyecto (`modelos/dataset_defensa.json`, el real) -- las
+prácticas del QA habrían contaminado el modelo de producción. Corregido
+pasándole rutas explícitas dentro de su propia carpeta
+(`entrenamiento_qa/dataset_defensa.json`), nunca las del proyecto.
+
+`despliegue/desplegar.sh` genera `SCOUTCUTS_TOKEN_ENTRENAMIENTO` la
+primera vez (igual que ya hacía con el token QA) y crea
+`$DATOS/entrenamiento_qa`; `nginx-scoutcuts.conf` reenvía
+`/v1/entrenamiento/*` al mismo backend bajo el mismo origen que
+`scoutcuts.com`, sin CORS extra.
+
+21 pruebas nuevas (`tests/servidor/test_entrenamiento.py`,
+`tests/servidor/test_api_entrenamiento.py`), incluyendo un flujo HTTP de
+punta a punta con video real sintético: subir -> marcar -> entrenar ->
+feedback -> borrado del video -> reintento falla porque ya no existe.
+Suite completa: 311 pasan, 2 skip.
+
+**Todavía no desplegado al servidor** -- probado solo en esta máquina. El
+script de despliegue ya publica toda la carpeta `web/`, así que
+`scoutcuts.com/entrenamiento/` debería funcionar en el siguiente
+despliegue sin cambios adicionales, pero eso no se ha verificado en vivo
+todavía. Tampoco se ha medido la huella real de memoria del backend con
+esta zona activa en el VPS de 950MB.
+
 ## 2026-11-04 (noche) · Primer modelo real de defensa: pequeno, incremental, nunca guarda video
 
 El usuario pidio que el QA pudiera "entrenar" el sistema con sus videos. La

@@ -27,6 +27,12 @@ from . import almacen as alm
 from . import procesador as procesador_mod
 from .almacen import ArchivoNoAceptado, Almacen, TrabajoDesconocido, Trabajo
 from .cola import Cola
+from .entrenamiento import (
+    ArchivoDePracticaNoAceptado,
+    VideoDePracticaNoEncontrado,
+    ZonaEntrenamiento,
+    estado_modelo as entrenamiento_estado_modelo,
+)
 from .usuarios import Usuario, Usuarios
 
 LARGO_MINIMO_TOKEN = 16
@@ -81,6 +87,9 @@ class Config:
     limite_bytes: int = alm.LIMITE_POR_DEFECTO
     telegram_token: str | None = None
     usuarios_base: Path | None = None
+    token_entrenamiento: str | None = None
+    entrenamiento_base: Path | None = None
+    max_edad_entrenamiento_horas: float = 24.0
 
     def __post_init__(self) -> None:
         self.raiz = Path(self.raiz)
@@ -90,11 +99,21 @@ class Config:
             self.perfiles = Path(self.perfiles)
         if self.usuarios_base is not None:
             self.usuarios_base = Path(self.usuarios_base)
+        if self.entrenamiento_base is not None:
+            self.entrenamiento_base = Path(self.entrenamiento_base)
 
     @property
     def usuarios_raiz(self) -> Path:
         """Carpeta de usuarios: la configurada, o una subcarpeta razonable de `raiz`."""
         return self.usuarios_base if self.usuarios_base is not None else self.raiz / "usuarios"
+
+    @property
+    def entrenamiento_raiz(self) -> Path:
+        """Carpeta de la zona de entrenamiento QA: aislada de `raiz` (produccion)."""
+        return (
+            self.entrenamiento_base if self.entrenamiento_base is not None
+            else self.raiz / "entrenamiento_qa"
+        )
 
     @classmethod
     def desde_entorno(cls, entorno: dict | None = None) -> "Config":
@@ -123,6 +142,16 @@ class Config:
         # al default razonable `SCOUTCUTS_DATOS/usuarios` (ver usuarios_raiz).
         usuarios_env = entorno.get("SCOUTCUTS_USUARIOS")
         max_edad_revision = entorno.get("SCOUTCUTS_MAX_EDAD_REVISION_HORAS")
+        # Token separado del token QA de produccion: la zona de entrenamiento
+        # (scoutcuts.com/entrenamiento) es un sandbox distinto, nunca debe
+        # compartir credencial con la subida de videos reales de clientes.
+        # Opcional: sin el, los endpoints de entrenamiento simplemente no se
+        # registran (ver crear_app), la API de produccion sigue igual.
+        token_entrenamiento = (
+            entorno.get("SCOUTCUTS_TOKEN_ENTRENAMIENTO") or ""
+        ).strip() or None
+        entrenamiento_env = entorno.get("SCOUTCUTS_ENTRENAMIENTO")
+        max_edad_entrenamiento = entorno.get("SCOUTCUTS_MAX_EDAD_ENTRENAMIENTO_HORAS")
         return cls(
             token=token,
             raiz=Path(raiz),
@@ -133,6 +162,11 @@ class Config:
             usuarios_base=Path(usuarios_env) if usuarios_env else None,
             max_edad_revision_horas=(
                 float(max_edad_revision) if max_edad_revision else 168.0
+            ),
+            token_entrenamiento=token_entrenamiento,
+            entrenamiento_base=Path(entrenamiento_env) if entrenamiento_env else None,
+            max_edad_entrenamiento_horas=(
+                float(max_edad_entrenamiento) if max_edad_entrenamiento else 24.0
             ),
         )
 
@@ -176,6 +210,20 @@ def crear_app(config: Config | None = None, *,
     usuarios = Usuarios(config.usuarios_raiz)
     cerrojo_subida = threading.Lock()
     estado_bot: dict = {"control": None}
+    # Zona de entrenamiento QA: solo se activa con su propio token (separado
+    # del token de produccion). Tiene su propio cerrojo interno, aislado del
+    # de subidas de produccion (nunca compiten por el mismo candado). El
+    # dataset/modelo de entrenamiento viven DENTRO de entrenamiento_raiz,
+    # nunca en los defaults del proyecto (modelos/dataset_defensa.json es
+    # el modelo real que alimenta `cortador defensa`; mezclarlos dejaria
+    # que practicas de QA contaminen el modelo de produccion real).
+    zona_entrenamiento = (
+        ZonaEntrenamiento(
+            config.entrenamiento_raiz,
+            ruta_dataset=config.entrenamiento_raiz / "dataset_defensa.json",
+            ruta_modelo=config.entrenamiento_raiz / "modelo_defensa.json",
+        ) if config.token_entrenamiento else None
+    )
 
     @asynccontextmanager
     async def _ciclo_de_vida(_app: FastAPI):
@@ -471,5 +519,68 @@ def crear_app(config: Config | None = None, *,
         return FileResponse(
             str(ruta), media_type="video/mp4",
             filename=f"montaje-{identificador}.mp4")
+
+    # --- Zona de entrenamiento QA (scoutcuts.com/entrenamiento) ---
+    #
+    # Sandbox aislado de la produccion real: otra carpeta en disco
+    # (config.entrenamiento_raiz, nunca config.raiz), otro token
+    # (SCOUTCUTS_TOKEN_ENTRENAMIENTO, nunca SCOUTCUTS_TOKEN_QA), y nunca
+    # toca el Almacen/Cola de clientes reales. Solo se registra si el
+    # administrador configuro el token de entrenamiento; sin el, estas
+    # rutas no existen (404), igual que si nunca se hubiera escrito este
+    # bloque -- la produccion real queda exactamente igual.
+    if zona_entrenamiento is not None:
+        def requiere_token_entrenamiento(request: Request) -> None:
+            cabecera = request.headers.get("authorization", "")
+            esquema, _, valor = cabecera.partition(" ")
+            if esquema.lower() != "bearer" or not secrets.compare_digest(
+                    valor.strip(), config.token_entrenamiento or ""):
+                raise ErrorHTTP(401, MENSAJE_SIN_TOKEN)
+
+        @app.get("/v1/entrenamiento/modelo")
+        def entrenamiento_estado(_token: None = Depends(requiere_token_entrenamiento)):
+            return entrenamiento_estado_modelo(
+                zona_entrenamiento.ruta_dataset, zona_entrenamiento.ruta_modelo)
+
+        @app.post("/v1/entrenamiento/videos")
+        def entrenamiento_subir(
+            archivo: UploadFile | None = File(default=None),
+            _token: None = Depends(requiere_token_entrenamiento),
+        ):
+            list(zona_entrenamiento.limpiar_vencidos(config.max_edad_entrenamiento_horas))
+            if archivo is None or not archivo.filename:
+                raise ErrorHTTP(400, MENSAJE_SIN_VIDEO)
+            try:
+                video = zona_entrenamiento.subir(archivo.filename, archivo.file)
+            except ArchivoDePracticaNoAceptado as err:
+                raise ErrorHTTP(415, str(err))
+            return JSONResponse(status_code=201, content={
+                "id": video.id, "nombre": video.nombre,
+            })
+
+        @app.post("/v1/entrenamiento/videos/{identificador}/entrenar")
+        def entrenamiento_entrenar(
+            identificador: str,
+            cuerpo: dict,
+            _token: None = Depends(requiere_token_entrenamiento),
+        ):
+            try:
+                resultado = zona_entrenamiento.entrenar_con_manifiesto(
+                    identificador,
+                    cuerpo.get("repeticiones"),
+                    str(cuerpo.get("video") or ""),
+                )
+            except VideoDePracticaNoEncontrado as err:
+                raise ErrorHTTP(404, str(err))
+            except ValueError as err:
+                raise ErrorHTTP(400, str(err))
+            return {
+                "ejemplos_agregados": resultado.ejemplos_agregados,
+                "total_ejemplos_dataset": resultado.total_ejemplos_dataset,
+                "modelo_calibrado": resultado.modelo_calibrado,
+                "categorias_cubiertas": resultado.categorias_cubiertas,
+                "categorias_faltantes": resultado.categorias_faltantes,
+                "evaluacion": resultado.evaluacion,
+            }
 
     return app

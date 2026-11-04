@@ -291,8 +291,9 @@ funcione. Cópialos a mano a `<release>/perfiles/` (propiedad `root:cortador`,
    borre. Motivo: un video de defensa/pitcheo/catcher subido por la PWA cae
    hoy en ese estado (ver punto 7) y se borraria en 24h sin que nadie lo
    revisara.**
-7. **Deteccion automatica de defensa — MODELO PEQUENO INCREMENTAL, RECIEN
-   CREADO (2026-11-04), SIN DESPLEGAR, SIN CONECTAR A LA WEB/BOT TODAVIA.**
+7. **Deteccion automatica de defensa — MODELO PEQUENO INCREMENTAL, conectado
+   a su propia zona web de entrenamiento (2026-11-04/05), AUN SIN DESPLEGAR
+   AL SERVIDOR.**
    `src/cortador/defensa_ml.py`: cada vez que una persona marca un video con
    `cortador defensa` (manifiesto `.defensa.json` -> 6 repeticiones), el
    comando extrae 3 numeros por repeticion (duracion, fuerza del pico de
@@ -318,15 +319,59 @@ funcione. Cópialos a mano a `<release>/perfiles/` (propiedad `root:cortador`,
    en los aciertos, que es el comportamiento buscado: dudar cuando duda, en
    vez de inventar una categoria segura que no lo es. Con 1 video no hay
    patron generalizable todavia; mejorara solo con mas videos marcados.
-   15 pruebas nuevas (`tests/test_defensa_ml.py`), incluyendo un pipeline
-   completo contra video real sintetico (OpenCV genera un video con
+   21 pruebas (`tests/test_defensa_ml.py`, `tests/servidor/test_entrenamiento.py`,
+   `tests/servidor/test_api_entrenamiento.py`), incluyendo pipelines
+   completos contra video real sintetico (OpenCV genera un video con
    movimiento real, se extraen caracteristicas, se calibra, y se clasifica
-   un CUARTO video nunca visto por el modelo). Mas 2 pruebas en
-   `tests/test_defensa.py` para la integracion con el comando CLI.
-   PENDIENTE: no esta conectado a la web ni al bot de Telegram (solo al
-   comando `cortador defensa` que ya usa una persona a mano); no se ha
-   desplegado al servidor; no clasifica nada todavia en produccion, solo
-   acumula dataset local cuando alguien corre el comando en esta maquina.
+   un video nunca visto por el modelo) y un flujo HTTP de punta a punta
+   (subir -> marcar -> entrenar -> feedback -> borrado del video). Mas 2
+   pruebas en `tests/test_defensa.py` para la integracion con el comando CLI.
+   **NUEVO: zona web de entrenamiento `scoutcuts.com/entrenamiento`**
+   (pedido explicito del usuario: "subelo a la web para que el QA pruebe y
+   lo entrene... y que el modelo le envie los feedbacks ahi mismo"). Flujo:
+   el QA sube un video de practica, lo marca jugada por jugada en el propio
+   navegador (sin exponer JSON ni rutas), cada marca se entrena al instante
+   y el QA ve de inmediato si el modelo coincidio o no con su categoria y
+   con cuanta confianza -- el video se borra automaticamente en el mismo
+   momento en que se entrena, nunca despues.
+   Aislamiento total de produccion real, por diseno (preferencia explicita
+   del usuario de separar sandbox de integracion real): token propio
+   `SCOUTCUTS_TOKEN_ENTRENAMIENTO` (nunca el `SCOUTCUTS_TOKEN_QA` de
+   produccion -- probado que uno no abre al otro), carpeta propia
+   `SCOUTCUTS_ENTRENAMIENTO` (default `datos/entrenamiento_qa`, nunca
+   `datos/trabajos`), y dataset/modelo propios dentro de esa carpeta
+   (nunca `modelos/dataset_defensa.json` de produccion -- mezclarlos
+   contaminaria el modelo real con practicas de QA). Nuevo modulo
+   `src/cortador/servidor/entrenamiento.py` (`ZonaEntrenamiento`): sube,
+   valida, entrena con UNA repeticion a la vez (a diferencia del manifiesto
+   de entrega al cliente, que exige el paquete 2+2+2 completo), evalua la
+   propia jugada que se acaba de aprender para dar feedback honesto, borra
+   el video, y limpia videos de practica huerfanos tras 24h si el QA nunca
+   completo el marcado. Endpoints nuevos en `api.py`:
+   `GET /v1/entrenamiento/modelo`, `POST /v1/entrenamiento/videos`,
+   `POST /v1/entrenamiento/videos/{id}/entrenar` -- solo se registran si
+   `SCOUTCUTS_TOKEN_ENTRENAMIENTO` esta configurado; sin el, estas rutas no
+   existen (404), la produccion real queda exactamente igual. Frontend
+   nuevo `web/entrenamiento/` (HTML/JS vanilla, mismo estilo que la PWA):
+   login por codigo, reproductor de video con botones "marcar inicio"/
+   "marcar tiro", categoria, lista de jugadas marcadas, boton de entrenar,
+   y tarjeta de feedback en lenguaje simple ("el modelo coincidio" / "el
+   modelo creyo que era X, ya aprendio de tu correccion") -- nunca JSON
+   crudo, nunca confianza numerica sin traducir. `nginx-scoutcuts.conf`
+   reenvia `/v1/entrenamiento/*` al mismo backend bajo el mismo origen que
+   `scoutcuts.com`; `desplegar.sh` genera `SCOUTCUTS_TOKEN_ENTRENAMIENTO`
+   la primera vez (igual que el token QA) y crea
+   `$DATOS/entrenamiento_qa`.
+   PENDIENTE REAL: nada de esto se ha desplegado al servidor todavia (todo
+   probado localmente, 311 pruebas en verde); falta publicar
+   `web/entrenamiento/index.html` como ruta real en el servidor (el script
+   de despliegue ya publica toda la carpeta `web/`, asi que
+   `scoutcuts.com/entrenamiento/` deberia funcionar en el siguiente
+   despliegue sin cambios adicionales, pero no se ha verificado en vivo);
+   no esta conectado al bot de Telegram (no hace falta, es flujo web);
+   pitcheo/catcher siguen fuera por falta de ejemplos marcados (ver punto
+   8); no se ha medido la huella real de memoria del backend con la zona de
+   entrenamiento activa en el VPS de 950MB.
 8. **Pitcheo y catcher — SIGUE SIN EXISTIR.** Ni categorias definidas, ni
    reglas de que cuenta como jugada completa, ni un solo ejemplo marcado:
    el enfoque de arriba (extraer numeros, nunca guardar el video) se podria

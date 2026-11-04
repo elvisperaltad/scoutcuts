@@ -65,25 +65,26 @@ def _repeticion(datos: object, indice: int) -> Repeticion:
     return Repeticion(categoria, inicio, tiro, estado, seleccionada)
 
 
-def cargar(ruta: str | Path, video: str | Path) -> Manifiesto:
-    """Carga y valida un manifiesto v1 correspondiente al video indicado."""
-    datos = json.loads(Path(ruta).read_text(encoding="utf-8"))
-    if not isinstance(datos, dict):
-        raise ValueError("El manifiesto debe ser un objeto JSON")
-    if datos.get("version") != VERSION:
-        raise ValueError(f"La version del manifiesto no es compatible; se requiere {VERSION}")
-    video_manifestado = datos.get("video")
-    if not isinstance(video_manifestado, str) or not video_manifestado:
-        raise ValueError("El manifiesto no indica un video valido")
-    if os.path.normcase(Path(video_manifestado).name) != os.path.normcase(Path(video).name):
-        raise ValueError(
-            f"El manifiesto corresponde a otro video ({video_manifestado}), no a {Path(video).name}"
-        )
-    crudas = datos.get("repeticiones")
+def repeticiones_desde_lista(crudas: object) -> tuple[Repeticion, ...]:
+    """Convierte una lista de objetos sin validar en repeticiones ya validadas.
+
+    Compartido por `cargar` (manifiesto en disco) y por el endpoint web de
+    entrenamiento (manifiesto recibido como JSON en el cuerpo del POST): la
+    validacion de cada repeticion es identica en ambos casos, solo cambia de
+    donde vienen los datos crudos.
+    """
     if not isinstance(crudas, list):
         raise ValueError("'repeticiones' debe ser una lista")
-    repeticiones = tuple(_repeticion(valor, i) for i, valor in enumerate(crudas, start=1))
+    return tuple(_repeticion(valor, i) for i, valor in enumerate(crudas, start=1))
 
+
+def seleccionar(repeticiones: tuple[Repeticion, ...]) -> tuple[Repeticion, ...]:
+    """De las repeticiones ya validadas, elige las 2+2+2 que se exportan.
+
+    Misma regla en ambos flujos: con exactamente 2 completas de una
+    categoria se usan esas 2; con mas de 2, hace falta marcar 'seleccionada'
+    en exactamente 2.
+    """
     elegidas: list[Repeticion] = []
     for categoria in CATEGORIAS:
         completas = [r for r in repeticiones
@@ -100,9 +101,27 @@ def cargar(ruta: str | Path, video: str | Path) -> Manifiesto:
                     "marcar exactamente dos con 'seleccionada': true"
                 )
         elegidas.extend(seleccion)
-
     elegidas.sort(key=lambda repeticion: repeticion.inicio)
-    return Manifiesto(video_manifestado, repeticiones, tuple(elegidas))
+    return tuple(elegidas)
+
+
+def cargar(ruta: str | Path, video: str | Path) -> Manifiesto:
+    """Carga y valida un manifiesto v1 correspondiente al video indicado."""
+    datos = json.loads(Path(ruta).read_text(encoding="utf-8"))
+    if not isinstance(datos, dict):
+        raise ValueError("El manifiesto debe ser un objeto JSON")
+    if datos.get("version") != VERSION:
+        raise ValueError(f"La version del manifiesto no es compatible; se requiere {VERSION}")
+    video_manifestado = datos.get("video")
+    if not isinstance(video_manifestado, str) or not video_manifestado:
+        raise ValueError("El manifiesto no indica un video valido")
+    if os.path.normcase(Path(video_manifestado).name) != os.path.normcase(Path(video).name):
+        raise ValueError(
+            f"El manifiesto corresponde a otro video ({video_manifestado}), no a {Path(video).name}"
+        )
+    repeticiones = repeticiones_desde_lista(datos.get("repeticiones"))
+    elegidas = seleccionar(repeticiones)
+    return Manifiesto(video_manifestado, repeticiones, elegidas)
 
 
 def tramos_exportables(manifiesto: Manifiesto, antes_extra: float = ANTES_EXTRA,

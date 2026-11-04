@@ -196,7 +196,7 @@ def cmd_defensa(args: argparse.Namespace) -> int:
 
     if not args.sin_entrenar:
         try:
-            _, modelo = defensa_ml_mod.actualizar_desde_manifiesto(args.video, manifiesto)
+            _, modelo, _ = defensa_ml_mod.actualizar_desde_manifiesto(args.video, manifiesto)
         except Exception as err:  # el entrenamiento nunca debe tumbar la entrega
             print(f"Aviso: no se pudo actualizar el modelo de defensa ({err}).",
                   file=sys.stderr)

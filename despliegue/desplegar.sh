@@ -91,6 +91,17 @@ add_var SCOUTCUTS_DATOS        "$DATOS"
 add_var SCOUTCUTS_QA            "$DATOS/qa"
 add_var SCOUTCUTS_PERFILES     "$APP/perfiles"
 add_var SCOUTCUTS_ENTREGA_NGINX 1
+# Token de entrenamiento: separado del token QA de produccion a proposito
+# (ver CONTINUAR_SERVIDOR.md, punto 7). Si no se define, la zona
+# /entrenamiento simplemente no registra sus rutas en la API (404), nunca
+# rompe el arranque del servicio.
+if ! grep -q '^SCOUTCUTS_TOKEN_ENTRENAMIENTO=' "$ENVF"; then
+  printf 'SCOUTCUTS_TOKEN_ENTRENAMIENTO=%s\n' "$(python3 -c 'import secrets;print(secrets.token_urlsafe(32))')" >> "$ENVF"
+  echo "    + SCOUTCUTS_TOKEN_ENTRENAMIENTO generada (no se imprime)"
+else
+  echo "    = SCOUTCUTS_TOKEN_ENTRENAMIENTO ya existe (no la toco)"
+fi
+add_var SCOUTCUTS_ENTRENAMIENTO "$DATOS/entrenamiento_qa"
 
 echo "==> 4/12 Grupo de entrega y carpetas de datos"
 getent group entrega >/dev/null || groupadd --system entrega
@@ -99,6 +110,7 @@ usermod -aG entrega www-data
 install -d -o cortador -g entrega -m 2750 "$DATOS"
 install -d -o cortador -g entrega -m 2750 "$DATOS/trabajos"
 install -d -o cortador -g cortador -m 750 "$DATOS/qa"
+install -d -o cortador -g cortador -m 750 "$DATOS/entrenamiento_qa"
 # TMPDIR del servicio (ver scoutcuts.service): particion real, nunca tmpfs,
 # para que las partes de un multipart que Starlette desborda a disco no
 # terminen en RAM. Debe existir antes de arrancar el servicio.
