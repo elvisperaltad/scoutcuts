@@ -1,0 +1,32 @@
+{
+  "crudo": "Video/VIDEO-2026-09-08-18-36-39.mov",
+  "montaje": "Video/VIDEO-2026-09-08-18-36-39.mp4",
+  "duracion": 70.9,
+  "tramos": [
+    {
+      "inicio": 6.57,
+      "fin": 9.97,
+      "correlacion": 1.0
+    },
+    {
+      "inicio": 12.77,
+      "fin": 19.17,
+      "correlacion": 1.0
+    },
+    {
+      "inicio": 21.8,
+      "fin": 31.9,
+      "correlacion": 1.0
+    },
+    {
+      "inicio": 34.37,
+      "fin": 37.17,
+      "correlacion": 1.0
+    },
+    {
+      "inicio": 47.0,
+      "fin": 49.97,
+      "correlacion": 1.0
+    }
+  ]
+}

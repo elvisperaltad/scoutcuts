@@ -1,0 +1,16 @@
+CORTADOR DE TURNOS - PRUEBA QA
+================================
+
+1. Extraiga TODO el contenido del ZIP a una carpeta local.
+2. Abra INICIAR_CORTADOR.bat con doble clic. No requiere instalar Python ni FFmpeg.
+   Esta edición usa el pythonw.exe oficial firmado de Python. Si la política empresarial
+   bloquea el EXE creado con PyInstaller, solicite y use esta edición Portable.
+   Si no abre, ejecute DIAGNOSTICO.bat y envíe una captura de todo el resultado.
+3. Seleccione la carpeta completa del jugador y pulse "Procesar carpeta".
+4. En la revisión de bateo use V para conservar, N para descartar y Q para guardar/salir.
+5. Los videos terminados quedan en la subcarpeta "Resultados" del jugador.
+6. Para devolver evidencia, pulse "Crear paquete para enviar", elija dónde guardar el ZIP
+   y envíe solamente ese ZIP. Nunca contiene videos ni resultados MP4.
+
+La aplicación trabaja localmente y no sube datos de forma automática. La evidencia se
+acumula en "DatosQA", junto a la aplicación. "Abrir carpeta de datos" permite verla.

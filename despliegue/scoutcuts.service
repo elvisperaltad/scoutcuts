@@ -1,0 +1,60 @@
+# ScoutCuts API — unidad systemd.
+# Se instala como /etc/systemd/system/scoutcuts.service.
+# Sirve la API con uvicorn, ligada SOLO a loopback. nginx es el unico punto publico.
+#
+# `crear_app` es una factory valida de uvicorn (sin argumentos lee os.environ
+# via Config.desde_entorno). systemd carga app.env en el entorno del proceso
+# antes de arrancar, asi que el token y las rutas llegan por el entorno, nunca
+# por la linea de comandos ni por el codigo.
+#
+# El codigo y el venv son propiedad de ROOT, no de `cortador`: el proceso que
+# procesa contenido subido por desconocidos no debe poder modificar su propio
+# ejecutable. `cortador` solo tiene permiso de ESCRITURA en /opt/cortador-control/datos.
+
+[Unit]
+Description=ScoutCuts API (cortador-control)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=cortador
+Group=cortador
+WorkingDirectory=/opt/cortador-control/app
+EnvironmentFile=/etc/cortador-control/app.env
+# PrivateTmp=true le da a este servicio su propio /tmp aislado, pero sigue
+# siendo tmpfs (RAM). Starlette desborda a disco las partes de un multipart
+# que superan 1 MB usando tempfile.SpooledTemporaryFile, que por defecto usa
+# el directorio temporal del sistema. Sin fijar TMPDIR aqui, una subida de
+# video grande cae en RAM igual que si nunca se hubiera "desbordado a disco":
+# en este VPS de 950 MiB eso puede agotar la memoria con una sola subida de
+# varios cientos de MB. Apuntamos TMPDIR a la particion real, dentro de la
+# unica ruta de escritura permitida (ReadWritePaths), para que esas partes
+# vayan a disco real, no a RAM. Medido: confirmado que SpooledTemporaryFile
+# respeta TMPDIR si esta fijado antes de que el proceso arranque.
+Environment=TMPDIR=/opt/cortador-control/datos/tmp
+ExecStart=/opt/cortador-control/app/.venv/bin/uvicorn --factory cortador.servidor.api:crear_app --host 127.0.0.1 --port 8010
+Restart=on-failure
+RestartSec=2
+# 0027: el propietario (cortador) tiene control total; el grupo heredado por
+# setgid en /opt/cortador-control/datos (grupo `entrega`, con www-data) puede
+# leer y atravesar; nadie mas en la maquina puede leer los videos de menores.
+UMask=0027
+
+# Endurecimiento: no debilita lo ya aplicado y no bloquea el acceso a datos.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+# La API escribe los trabajos (videos de entrada, marcas, resultado, evidencia QA)
+# bajo SCOUTCUTS_DATOS. Debe ser la unica ruta de escritura.
+ReadWritePaths=/opt/cortador-control/datos
+
+[Install]
+WantedBy=multi-user.target

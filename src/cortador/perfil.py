@@ -48,4 +48,5 @@ class Perfil:
     @classmethod
     def cargar(cls, ruta: str | Path) -> "Perfil":
         datos = json.loads(Path(ruta).read_text(encoding="utf-8"))
+        datos["origen"] = Path(datos.get("origen") or ruta).name
         return cls(**datos)

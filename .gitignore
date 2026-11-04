@@ -3,16 +3,26 @@ __pycache__/
 *.py[cod]
 .venv/
 *.egg-info/
+.test-tmp/
+DatosQA/
+build/
+dist/
 
 # Datos de trabajo: nunca versionar vídeo
+Video/
 fixtures/*.mp4
 fixtures/*.mov
 salida/
+trabajo-agente/
+trabajo-jornada/
 *.mp4
 *.mov
 
 # Perfiles de cámara generados en pruebas
 perfiles/*.json
+
+# Cuadernos de marcas: van junto al vídeo del cliente
+*.marcas.json
 
 # Pesos de modelos: se descargan solos
 *.pt

@@ -1,0 +1,1 @@
+Control del servidor ScoutCuts. Ver CONTINUAR_SERVIDOR.md para el estado completo y actualizado del servidor de produccion (144.202.57.21, alias SSH precios, dominio scoutcuts.com). Ese es el unico documento de relevo que se mantiene sincronizado con el servidor real.

@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ScoutCuts</title>
+<meta name="theme-color" content="#0f172a">
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<style>
+  :root {
+    --fondo: #0f172a;
+    --tarjeta: #1e293b;
+    --texto: #f1f5f9;
+    --texto-tenue: #94a3b8;
+    --acento: #22c55e;
+    --acento-oscuro: #16a34a;
+    --peligro: #ef4444;
+    --borde: #334155;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--fondo);
+    color: var(--texto);
+    min-height: 100vh;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .pantalla { display: none; min-height: 100vh; flex-direction: column; }
+  .pantalla.activa { display: flex; }
+  header {
+    padding: 20px 20px 10px;
+    text-align: center;
+  }
+  header h1 { font-size: 22px; margin: 0; letter-spacing: 0.5px; }
+  header p { color: var(--texto-tenue); font-size: 13px; margin: 4px 0 0; }
+  main { flex: 1; padding: 16px; max-width: 480px; width: 100%; margin: 0 auto; }
+  .tarjeta {
+    background: var(--tarjeta);
+    border: 1px solid var(--borde);
+    border-radius: 14px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  label { display: block; font-size: 13px; color: var(--texto-tenue); margin-bottom: 6px; }
+  input[type="text"] {
+    width: 100%;
+    padding: 14px;
+    font-size: 20px;
+    letter-spacing: 2px;
+    text-align: center;
+    text-transform: uppercase;
+    border-radius: 10px;
+    border: 1px solid var(--borde);
+    background: #0b1220;
+    color: var(--texto);
+    margin-bottom: 14px;
+  }
+  input[type="text"]:focus { outline: 2px solid var(--acento); border-color: var(--acento); }
+  button {
+    width: 100%;
+    padding: 14px;
+    font-size: 16px;
+    font-weight: 600;
+    border-radius: 10px;
+    border: none;
+    background: var(--acento);
+    color: #04210f;
+    cursor: pointer;
+  }
+  button:active { background: var(--acento-oscuro); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.secundario {
+    background: transparent;
+    border: 1px solid var(--borde);
+    color: var(--texto);
+  }
+  .error {
+    color: var(--peligro);
+    font-size: 14px;
+    margin: -4px 0 14px;
+    min-height: 18px;
+  }
+  .cuenta-resumen {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+  .cuenta-resumen .nombre { font-size: 17px; font-weight: 600; }
+  .cuenta-resumen .cuota { font-size: 13px; color: var(--texto-tenue); }
+  .zona-subida {
+    border: 2px dashed var(--borde);
+    border-radius: 14px;
+    padding: 28px 16px;
+    text-align: center;
+    color: var(--texto-tenue);
+    margin-bottom: 14px;
+  }
+  .zona-subida.sobre-archivo { border-color: var(--acento); color: var(--texto); }
+  input[type="file"] { display: none; }
+  .barra-progreso {
+    height: 8px;
+    border-radius: 4px;
+    background: #0b1220;
+    overflow: hidden;
+    margin: 10px 0;
+    display: none;
+  }
+  .barra-progreso .relleno {
+    height: 100%;
+    width: 0%;
+    background: var(--acento);
+    transition: width 0.2s;
+  }
+  ul#lista-trabajos { list-style: none; padding: 0; margin: 0; }
+  ul#lista-trabajos li {
+    padding: 14px;
+    border-bottom: 1px solid var(--borde);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+  }
+  ul#lista-trabajos li:last-child { border-bottom: none; }
+  .trabajo-nombre { font-size: 14px; }
+  .trabajo-mensaje { font-size: 12px; color: var(--texto-tenue); margin-top: 2px; }
+  .estado-pastilla {
+    font-size: 11px;
+    padding: 3px 9px;
+    border-radius: 99px;
+    background: #334155;
+    white-space: nowrap;
+  }
+  .estado-pastilla.listo { background: var(--acento); color: #04210f; }
+  .estado-pastilla.error { background: var(--peligro); color: #1a0505; }
+  .vacio { text-align: center; color: var(--texto-tenue); padding: 24px 0; font-size: 14px; }
+  footer { text-align: center; padding: 16px; color: var(--texto-tenue); font-size: 12px; }
+  a.enlace-descarga {
+    display: inline-block;
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--acento);
+    text-decoration: none;
+  }
+  #salir { margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<section id="pantalla-login" class="pantalla activa">
+  <header>
+    <h1>ScoutCuts</h1>
+    <p>Sube tu video de entrenamiento y recibe el montaje</p>
+  </header>
+  <main>
+    <div class="tarjeta">
+      <label for="codigo-acceso">Tu código de acceso</label>
+      <input id="codigo-acceso" type="text" inputmode="text" autocomplete="off"
+             autocapitalize="characters" maxlength="12" placeholder="EJ: AB23CD45">
+      <div class="error" id="error-login"></div>
+      <button id="btn-entrar">Entrar</button>
+    </div>
+    <p style="text-align:center; color:var(--texto-tenue); font-size:13px;">
+      ¿No tienes un código? Pídelo al administrador de tu equipo.
+    </p>
+  </main>
+</section>
+
+<section id="pantalla-app" class="pantalla">
+  <header>
+    <h1>ScoutCuts</h1>
+  </header>
+  <main>
+    <div class="tarjeta">
+      <div class="cuenta-resumen">
+        <div>
+          <div class="nombre" id="texto-nombre"></div>
+          <div class="cuota" id="texto-cuota"></div>
+        </div>
+        <button class="secundario" id="salir" style="width:auto; padding:8px 14px;">Salir</button>
+      </div>
+
+      <div class="zona-subida" id="zona-subida">
+        <div id="texto-zona-subida">Toca para elegir un video, o arrástralo aquí</div>
+        <input type="file" id="input-archivo" accept="video/mp4,video/quicktime,video/x-msvideo,.mp4,.mov,.avi">
+      </div>
+      <div class="barra-progreso" id="barra-progreso"><div class="relleno" id="relleno-progreso"></div></div>
+      <div class="error" id="error-subida"></div>
+      <button id="btn-subir" disabled>Subir video</button>
+    </div>
+
+    <div class="tarjeta">
+      <h3 style="margin-top:0; font-size:15px;">Tus videos</h3>
+      <ul id="lista-trabajos"></ul>
+      <div class="vacio" id="lista-vacia">Todavía no has subido ningún video.</div>
+    </div>
+  </main>
+</section>
+
+<footer>ScoutCuts · scoutcuts.com</footer>
+
+<script src="/app.js"></script>
+</body>
+</html>

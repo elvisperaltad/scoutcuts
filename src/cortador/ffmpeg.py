@@ -6,6 +6,8 @@ import json
 import os
 import shutil
 import subprocess
+import sys
+from pathlib import Path
 from dataclasses import dataclass
 
 
@@ -17,6 +19,16 @@ def _buscar(nombre: str, variable: str) -> str:
     ruta = os.environ.get(variable)
     if ruta and os.path.isfile(ruta):
         return ruta
+    ejecutable = nombre if nombre.lower().endswith(".exe") else nombre + ".exe"
+    bases = []
+    if getattr(sys, "_MEIPASS", None):
+        bases.append(Path(sys._MEIPASS))
+    if getattr(sys, "frozen", False):
+        bases.append(Path(sys.executable).resolve().parent)
+    for base in bases:
+        for candidato in (base / ejecutable, base / "bin" / ejecutable):
+            if candidato.is_file():
+                return str(candidato)
     hallado = shutil.which(nombre)
     if hallado:
         return hallado

@@ -1,0 +1,11 @@
+[Unit]
+Description=ScoutCuts: dispara la purga de trabajos vencidos una vez al dia
+
+[Timer]
+OnCalendar=*-*-* 04:00:00
+# Si el servidor estuvo apagado a esa hora, igual la corre al arrancar.
+Persistent=true
+RandomizedDelaySec=600
+
+[Install]
+WantedBy=timers.target
