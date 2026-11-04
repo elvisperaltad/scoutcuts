@@ -1,5 +1,43 @@
 # Bitácora
 
+## 2026-11-05 (noche) · Zona de entrenamiento QA desplegada y verificada en vivo
+
+Lo construido en la entrada anterior (hoy mismo) se subió al servidor real:
+release `20261104203715`, 12/12 pasos del script de despliegue sin errores.
+Verificación de punta a punta contra el dominio real, no solo localhost:
+
+- `scoutcuts.com/entrenamiento/` responde 200 con el HTML/JS nuevos.
+- Aislamiento de credenciales confirmado EN VIVO: sin token da 401; con
+  `SCOUTCUTS_TOKEN_ENTRENAMIENTO` da 200; con el token de producción
+  (`SCOUTCUTS_TOKEN_QA`) da 401 -- uno no abre al otro, también en el
+  servidor real.
+- Flujo completo probado con un video sintético real contra
+  `api.scoutcuts.com`: subir -> marcar una repetición -> entrenar ->
+  recibió feedback correcto -> el video se borró de inmediato
+  (confirmado mirando la carpeta: `entrenamiento_qa/videos/` quedó
+  vacío, solo quedaron los 3 números en el dataset).
+- El dataset/modelo de PRODUCCIÓN real (6 ejemplos del cliente) se
+  verificó intacto después de esta prueba -- no se contaminó.
+- Limpié el video y dataset de prueba después de verificar, dejando la
+  zona en 0 ejemplos para el primer uso real del QA.
+- Medí la huella de memoria real (no estimada): con la zona activa y
+  opencv cargado, el servicio completo usa 90MB de RAM de los 950MB
+  totales del VPS -- la preocupación de que esto no cupiera en memoria
+  queda resuelta, hay margen de sobra.
+
+Encontré y corregí un problema propio antes de llegar aquí (documentado en
+la entrada anterior): al construir `ZonaEntrenamiento` sin rutas
+explícitas en `api.py`, caía al dataset/modelo de producción por defecto.
+También detecté, al preparar el paquete para subir al servidor, que mi
+propio comando `tar --exclude='*.mp4'` NO excluía los videos reales del
+cliente porque sus extensiones están en mayúsculas (`.MP4`, `.MOV`) -- la
+trampa que ya estaba documentada ("nunca confiar en tar --exclude para
+videos") se confirmó en la práctica. Corregido excluyendo la carpeta
+`Video/` completa en vez de depender de patrones de extensión.
+
+Pendiente real que queda: que un QA humano lo use desde su propio
+teléfono o laptop y dé feedback real -- lo demás ya está en producción.
+
 ## 2026-11-05 · Zona web de entrenamiento QA (scoutcuts.com/entrenamiento)
 
 El usuario pidió textualmente: "subelo a la web para que el QA pruebe y lo

@@ -362,16 +362,28 @@ funcione. Cópialos a mano a `<release>/perfiles/` (propiedad `root:cortador`,
    `scoutcuts.com`; `desplegar.sh` genera `SCOUTCUTS_TOKEN_ENTRENAMIENTO`
    la primera vez (igual que el token QA) y crea
    `$DATOS/entrenamiento_qa`.
-   PENDIENTE REAL: nada de esto se ha desplegado al servidor todavia (todo
-   probado localmente, 311 pruebas en verde); falta publicar
-   `web/entrenamiento/index.html` como ruta real en el servidor (el script
-   de despliegue ya publica toda la carpeta `web/`, asi que
-   `scoutcuts.com/entrenamiento/` deberia funcionar en el siguiente
-   despliegue sin cambios adicionales, pero no se ha verificado en vivo);
-   no esta conectado al bot de Telegram (no hace falta, es flujo web);
-   pitcheo/catcher siguen fuera por falta de ejemplos marcados (ver punto
-   8); no se ha medido la huella real de memoria del backend con la zona de
-   entrenamiento activa en el VPS de 950MB.
+   **DESPLEGADO Y VERIFICADO EN VIVO (2026-11-04, noche):** release
+   `20261104203715` activa. Probado desde fuera contra el dominio real,
+   no solo localhost: `scoutcuts.com/entrenamiento/` responde 200 con el
+   HTML/JS nuevos; `GET /v1/entrenamiento/modelo` sin token da 401; con
+   `SCOUTCUTS_TOKEN_ENTRENAMIENTO` da 200; con el token de PRODUCCION
+   (`SCOUTCUTS_TOKEN_QA`) da 401 -- aislamiento de credenciales confirmado
+   en el servidor real, no solo en pruebas locales. Flujo completo subir
+   -> marcar -> entrenar -> feedback probado con un video sintetico real
+   contra `api.scoutcuts.com`: respondio con feedback correcto y el video
+   se borro de inmediato (`entrenamiento_qa/videos/` quedo vacio, solo
+   quedaron los 3 numeros en el dataset). El dataset/modelo de PRODUCCION
+   (`modelos/dataset_defensa.json`, 6 ejemplos reales) se verifico intacto
+   despues de esta prueba -- no se contamino. El video y dataset de prueba
+   se borraron despues de verificar, dejando la zona en 0 ejemplos para
+   el primer uso real del QA.
+   **Huella de memoria real, medida, no estimada:** con la zona de
+   entrenamiento activa (opencv cargado), el servicio completo usa 90MB de
+   RAM (`systemctl status scoutcuts`, campo Memory) de los 950MB totales
+   del VPS -- la preocupacion de que el modelo no cupiera en memoria
+   quedo resuelta: hay margen de sobra.
+   Pendiente real que queda: que un QA humano lo use desde su propio
+   telefono/laptop y de feedback -- lo demas ya esta en produccion.
 8. **Pitcheo y catcher — SIGUE SIN EXISTIR.** Ni categorias definidas, ni
    reglas de que cuenta como jugada completa, ni un solo ejemplo marcado:
    el enfoque de arriba (extraer numeros, nunca guardar el video) se podria
