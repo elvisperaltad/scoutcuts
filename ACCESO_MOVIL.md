@@ -68,7 +68,10 @@ tres minutos en este servidor, procesando de uno en uno.
 ## Limitación honesta del servidor actual
 
 Un núcleo y 950 MiB de RAM alcanzan para la primera etapa, pero no para varios scouts
-trabajando a la vez. Con dos o tres videos simultáneos la cola se hará evidente.
+trabajando a la vez. Con dos o tres videos simultáneos la cola se hará evidente. Este
+servidor cuesta **US$6 mensuales** y se mantendrá así mientras no haya clientes. El
+producto se venderá por **US$50 mensuales por cliente**; después de conseguir el primer
+usuario de pago se ampliará el servidor a **más de 4 GB de RAM**.
 
 Además hay un problema de espacio: quedan unos 16 GB libres y los videos reales de este
 proyecto pesan entre 8 y 134 MB cada uno. Subir material sin borrar nada llena el disco rápido.
@@ -78,8 +81,9 @@ Decisiones que esto obliga a tomar:
 1. Procesar en una cola de un trabajo a la vez y mostrar la posición al usuario.
 2. Borrar el video original automáticamente poco después de entregar el resultado, con un
    plazo corto y visible para el scout.
-3. Ampliar el servidor cuando haya usuarios reales. Un plan con más núcleos y memoria es
-   barato comparado con desarrollar aplicaciones nativas.
+3. Ampliar el servidor a más de 4 GB de RAM después de conseguir el primer usuario de
+   pago. No asumir ese costo antes: el VPS actual cuesta US$6/mes y el producto se venderá
+   por US$50/mes por cliente.
 4. Mover el almacenamiento de videos a almacenamiento de objetos si el volumen crece.
 
 ## Lo que el teléfono sí debe hacer

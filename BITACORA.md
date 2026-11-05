@@ -1,5 +1,15 @@
 # Bitácora
 
+## 2026-11-05 · Costo comercial y momento acordado para ampliar el servidor
+
+El propietario confirmó el criterio económico que debe gobernar las decisiones de
+infraestructura: el VPS actual cuesta **US$6 mensuales**, ScoutCuts se venderá por
+**US$50 mensuales por cliente**, y el servidor se ampliará a un plan de **más de 4 GB
+de RAM después de conseguir el primer usuario de pago**. Hasta entonces se mantiene
+el VPS actual de 1 CPU/950 MiB, la cola de un solo carril y la prohibición práctica de
+instalar modelos o servicios pesados. La prioridad previa al primer ingreso es
+seguridad, privacidad, estabilidad y eficiencia, no sobredimensionar infraestructura.
+
 ## 2026-11-05 (madrugada, 2da pasada) · Revisión autónoma: dos bugs reales corregidos y respaldo de entrenamiento nuevo
 
 El usuario autorizó trabajo autónomo amplio ("analiza el proyecto y

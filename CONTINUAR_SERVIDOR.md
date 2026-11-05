@@ -1,7 +1,8 @@
 # Continuación del servidor ScoutCuts
 
-Documento de relevo para otro Claude/agente. Estado verificado el 2026-11-04
-(tarde) en el servidor, tras desplegar y probar la API de punta a punta.
+Documento de relevo para otro Claude/agente. Estado actualizado el 2026-11-05
+en el servidor, tras desplegar y probar la API, la zona de entrenamiento,
+la purga de privacidad y el respaldo automático de modelos QA.
 
 ## Regla principal
 
@@ -46,6 +47,13 @@ propietario.
 - Host: `vultr`.
 - SO: Ubuntu 26.04.1 LTS, kernel 7.0.0-38-generic.
 - Capacidad: 1 CPU, 950 MiB RAM, 2.3 GiB swap, 23 GB de disco.
+- Costo actual confirmado por el propietario: **US$6 mensuales**.
+- Precio comercial previsto: **US$50 mensuales por cliente**.
+- Decisión comercial y de infraestructura: mantener este VPS económico mientras
+  no haya clientes. **Después de conseguir el primer usuario de pago**, ampliar
+  el servidor a un plan de **más de 4 GB de RAM**. Hasta entonces, conservar la
+  cola de un solo carril y no instalar LLM, redes neuronales pesadas ni servicios
+  que comprometan el margen de memoria del plan actual.
 - Huella ED25519 confirmada contra Vultr: `SHA256:of5Zz14W154QfiUJPCnotumDXRRB45nvh5clLeQySkc`.
 - Si cambia la huella sin reinstalación declarada, detenerse. No usar `StrictHostKeyChecking=no`.
 
