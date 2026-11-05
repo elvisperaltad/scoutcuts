@@ -1,5 +1,36 @@
 # Bitácora
 
+## 2026-11-05 · El verificador de despliegue ya no deja trabajos sintéticos
+
+La auditoría encontró que cada ejecución autenticada de
+`despliegue/verificar-despliegue.sh` subía `prueba.mp4` como si fuera material
+real. En 320x240 normalmente terminaba `pendiente_revision`; recibía entonces
+la gracia de 168 horas reservada para videos reales que esperan revisión
+humana. Por eso cinco sondas de despliegues anteriores aparecieron mezcladas
+con la cola real y hubo que identificarlas y limpiarlas manualmente.
+
+Se corrigió con TDD y dos barreras. El trabajo ahora persiste
+`verificacion: true`, queda fuera de la gracia extendida y vence con el límite
+normal de 24 horas si una interrupción impide limpiarlo; el timer diario lo
+retira en su siguiente ejecución (peor caso aproximado: 48 horas). Además, la API ofrece
+`DELETE /v1/trabajos/{id}` exclusivamente para trabajos nacidos con esa marca:
+un trabajo real responde 404 y permanece intacto; una sonda aún en cola o en
+procesamiento responde 409 para impedir una carrera con el worker. El script
+marca la subida, exige DELETE 204 antes de declarar éxito y conserva un trap
+best-effort para salidas anticipadas.
+
+Durante las pruebas apareció además una falla de portabilidad del propio
+verificador: Git Bash no entregaba al `curl.exe` nativo la ruta de `mktemp`, y
+el stub `python3` de Windows estaba en PATH pero no podía ejecutar los parseos
+JSON. El script ahora convierte la ruta con `cygpath` cuando existe y elige
+`python3`/`python` probando que el intérprete realmente ejecute `import json`.
+En Linux el flujo permanece igual.
+
+Pruebas: se observó RED primero para la gracia de purga, para el DELETE
+inexistente y para el script sin marca/limpieza; después GREEN. Suite completa:
+**322 passed, 2 skipped**. Los hashes del dataset y modelo real de defensa
+permanecieron idénticos.
+
 ## 2026-11-05 · Costo comercial y momento acordado para ampliar el servidor
 
 El propietario confirmó el criterio económico que debe gobernar las decisiones de

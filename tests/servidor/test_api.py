@@ -361,6 +361,38 @@ def test_subir_purga_lo_vencido_sin_tocar_lo_reciente(servicio):
     assert activo.almacen.carpeta(nuevo).exists()
 
 
+def test_borrar_solo_elimina_las_sondas_de_verificacion(servicio):
+    """El E2E de despliegue sube una sonda real al servidor en vivo y necesita
+    poder limpiarla al terminar. Ese borrado tiene que ser imposible de usar
+    contra material de un scout: con la marca `verificacion=1` el DELETE
+    responde 204 y la carpeta desaparece; sin esa marca responde 404 y la
+    carpeta sigue intacta, aunque el token sea el correcto."""
+    activo = servicio(_entrega())
+
+    sonda = activo.cliente.post(
+        "/v1/trabajos?verificacion=1", files=dict([VIDEO]),
+        headers=activo.cabeceras)
+    assert sonda.status_code == 201
+    id_sonda = sonda.json()["id"]
+    assert activo.cola.esperar(10) is True
+
+    borrado = activo.cliente.delete(
+        f"/v1/trabajos/{id_sonda}", headers=activo.cabeceras)
+
+    assert borrado.status_code == 204
+    assert not activo.almacen.carpeta(id_sonda).exists()
+
+    id_real = _subir(activo).json()["id"]
+    assert activo.cola.esperar(10) is True
+
+    negado = activo.cliente.delete(
+        f"/v1/trabajos/{id_real}", headers=activo.cabeceras)
+
+    assert negado.status_code == 404
+    assert activo.almacen.carpeta(id_real).exists()
+    assert activo.almacen.estado(id_real).estado == mod.LISTO
+
+
 def test_config_desde_entorno_lee_el_token_del_bot_si_esta_presente(tmp_path):
     pytest.importorskip("fastapi", reason="falta el extra `servidor`")
     from cortador.servidor import api

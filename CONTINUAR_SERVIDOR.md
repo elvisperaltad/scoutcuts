@@ -170,7 +170,17 @@ nginx — no deja el sitio público apuntando a un backend roto.
 `verificar-despliegue.sh` ya NO es informativo: acumula fallos reales y
 termina con `exit 1` si algo no es lo esperado, e incluye un E2E real
 (sube un video sintético de prueba, espera que la cola lo procese, intenta
-descargarlo). Nunca lo tomes como éxito solo porque imprimió números; revisa
+descargarlo). **Desde 2026-11-05 la sonda se crea con `verificacion=1` y el
+script exige borrarla por API antes de declarar éxito.** El endpoint
+`DELETE /v1/trabajos/{id}` solo acepta trabajos nacidos con esa marca; para
+un video normal responde el mismo 404 que para un id inexistente, aun con el
+token QA correcto. También rechaza con 409 cualquier sonda todavía presente
+en la cola o en procesamiento. Si el script se interrumpe antes del DELETE,
+la marca impide que la sonda reciba la gracia de revisión de 7 días: la purga
+normal la considera vencida a las 24h y el timer diario la retira en su
+siguiente ejecución (peor caso aproximado: 48h). Esto evita que cada verificación deje un trabajo
+sintético mezclado con material real pendiente de revisión. Nunca lo tomes
+como éxito solo porque imprimió números; revisa
 la última línea (`Despliegue verificado` vs `Despliegue NO verificado`).
 
 IMPORTANTE: los perfiles de cámara (`perfiles/*.json`) están en `.gitignore`

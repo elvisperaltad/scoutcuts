@@ -72,6 +72,7 @@ class Trabajo:
     duracion: float = 0.0
     descargado: bool = False
     propietario: str = ""
+    verificacion: bool = False
     creado: str = field(default_factory=_sello)
     actualizado: str = field(default_factory=_sello)
 
@@ -110,13 +111,16 @@ class Almacen:
         return texto
 
     def crear(self, nombre_archivo: str, tamano_bytes: int = 0,
-             *, propietario: str = "") -> Trabajo:
+             *, propietario: str = "", verificacion: bool = False) -> Trabajo:
         """Reserva la carpeta del trabajo tras validar nombre y tamano.
 
         `propietario` es opcional y queda vacio por defecto (compatibilidad
         con la API HTTP publica, que no tiene usuarios). El bot de Telegram
         lo usa para guardar el telegram_id de quien subio el video, y asi
         poder avisarle cuando el trabajo termine.
+
+        `verificacion` marca las sondas del E2E de despliegue: nadie las va
+        a revisar, asi que no deben recibir la gracia extendida de purgar().
         """
         nombre = Path(str(nombre_archivo).replace("\\", "/")).name.strip()
         extension = Path(nombre).suffix.lower()
@@ -137,6 +141,7 @@ class Almacen:
             extension=extension,
             tamano_bytes=int(tamano_bytes or 0),
             propietario=str(propietario or ""),
+            verificacion=bool(verificacion),
         )
         self.carpeta(trabajo.id).mkdir(parents=True, exist_ok=True)
         self.guardar_estado(trabajo)
@@ -256,9 +261,10 @@ class Almacen:
                     shutil.rmtree(carpeta, ignore_errors=True)
                     yield carpeta.name
                 continue
-            limite_trabajo = (
-                limite_revision if trabajo.estado == PENDIENTE_REVISION else limite
+            con_gracia = (
+                trabajo.estado == PENDIENTE_REVISION and not trabajo.verificacion
             )
+            limite_trabajo = limite_revision if con_gracia else limite
             if self._fecha(trabajo.creado, carpeta) < limite_trabajo:
                 shutil.rmtree(carpeta, ignore_errors=True)
                 yield carpeta.name

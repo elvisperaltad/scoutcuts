@@ -268,6 +268,23 @@ def test_purgar_sin_gracia_extendida_mantiene_comportamiento_anterior(tmp_path):
     assert not guardia.carpeta(pendiente.id).exists()
 
 
+def test_purgar_no_da_gracia_extendida_a_un_trabajo_de_verificacion(tmp_path):
+    """El E2E de verificar-despliegue.sh sube un video minimo que suele quedar
+    en pendiente_revision. Nadie va a revisar esa sonda: con la gracia
+    extendida se queda 7 dias ocupando disco, y cada despliegue deja otra.
+    Marcado como verificacion, vence con el limite normal de 24h."""
+    from cortador.servidor import almacen as mod
+
+    guardia = _almacen(tmp_path)
+    sonda = guardia.crear("verificacion.mp4", 10, verificacion=True)
+    sonda.estado = mod.PENDIENTE_REVISION
+    guardia.guardar_estado(sonda)
+    _envejecer(guardia, sonda, 48)
+
+    assert list(guardia.purgar(24, max_edad_revision_horas=168)) == [sonda.id]
+    assert not guardia.carpeta(sonda.id).exists()
+
+
 def test_depurar_texto_quita_rutas_y_nombres_de_usuario():
     from cortador.servidor.almacen import depurar_texto
 

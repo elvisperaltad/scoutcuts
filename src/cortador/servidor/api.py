@@ -49,6 +49,10 @@ MENSAJE_OTRA_SUBIDA_EN_CURSO = (
 )
 MENSAJE_ANALIZANDO = "Estamos analizando tu video."
 MENSAJE_ESPERA_DESCARGA = "Todavia estamos analizando tu video. Vuelve en un momento."
+MENSAJE_BORRADO_EN_CURSO = (
+    "Ese video todavia esta en la fila o en proceso. Espera a que termine "
+    "y vuelve a intentarlo."
+)
 MENSAJE_NO_ENCONTRADO = "No encontramos ese trabajo."
 MENSAJE_INTERNO = "Tuvimos un problema al procesar tu solicitud. Intentalo de nuevo."
 
@@ -339,7 +343,12 @@ def crear_app(config: Config | None = None, *,
 
     @app.post("/v1/trabajos")
     def subir(archivo: UploadFile | None = File(default=None),
+              verificacion: bool = False,
               _token: None = Depends(requiere_token)):
+        # `verificacion` solo lo usa el E2E de despliegue (ver DELETE mas
+        # abajo): marca la sonda como material desechable, sin la gracia
+        # extendida de purgar() y borrable despues por su propio id. La PWA
+        # no lo expone: un video de un scout nunca debe nacer con esta marca.
         if not cerrojo_subida.acquire(blocking=False):
             raise ErrorHTTP(503, MENSAJE_OTRA_SUBIDA_EN_CURSO)
         try:
@@ -350,7 +359,7 @@ def crear_app(config: Config | None = None, *,
             if archivo is None or not archivo.filename:
                 raise ErrorHTTP(400, MENSAJE_SIN_VIDEO)
             try:
-                trabajo = almacen.crear(archivo.filename)
+                trabajo = almacen.crear(archivo.filename, verificacion=verificacion)
             except ArchivoNoAceptado as err:
                 raise ErrorHTTP(415, str(err))
             try:
@@ -405,6 +414,35 @@ def crear_app(config: Config | None = None, *,
         return FileResponse(
             str(ruta), media_type="video/mp4",
             filename=f"montaje-{identificador}.mp4")
+
+    @app.delete("/v1/trabajos/{identificador}")
+    def borrar(identificador: str, _token: None = Depends(requiere_token)):
+        """Borra una sonda del E2E de despliegue, y solo una sonda.
+
+        El token QA es el mismo con el que se suben videos de clientes, asi
+        que este endpoint no puede ser un borrado generico: solo acepta
+        trabajos nacidos con `verificacion=1`. Para cualquier otro id
+        (inexistente, invalido o un trabajo real de un scout) responde el
+        mismo 404 opaco, sin confirmar si el id existe.
+        """
+        trabajo = _buscar(identificador)
+        if not trabajo.verificacion:
+            raise ErrorHTTP(404, MENSAJE_NO_ENCONTRADO)
+        # Nunca se borra mientras el trabajador puede estar escribiendo en la
+        # carpeta: rmtree por debajo del hilo de la cola dejaria el trabajo a
+        # medias y volveria a crear archivos en una carpeta ya borrada.
+        if cola.posicion(identificador) is not None or trabajo.estado in (
+                alm.RECIBIDO, alm.EN_COLA, alm.PROCESANDO):
+            raise ErrorHTTP(409, MENSAJE_BORRADO_EN_CURSO)
+        # Idempotente solo ante una carpeta que ya no esta (un DELETE repetido,
+        # o la purga que se le adelanto): eso ya es el 204 que el cliente pide.
+        # Cualquier otro error de disco -- permisos, IO -- se deja subir como
+        # 500: un borrado que no borra no puede responder "borrado".
+        try:
+            shutil.rmtree(almacen.carpeta(identificador))
+        except FileNotFoundError:
+            pass
+        return Response(status_code=204)
 
     @app.post("/v1/pwa/sesion")
     def pwa_sesion(datos: PeticionSesionPwa):
