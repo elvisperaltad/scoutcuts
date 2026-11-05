@@ -101,7 +101,7 @@ fi
 echo
 if command -v systemctl >/dev/null 2>&1; then
   echo "== Timers auxiliares (solo si se corre dentro del servidor) =="
-  for timer in scoutcuts-purga.timer scoutcuts-monitor.timer; do
+  for timer in scoutcuts-purga.timer scoutcuts-monitor.timer scoutcuts-respaldo.timer; do
     esperar "$timer activo" "active" "$(systemctl is-active "$timer" 2>/dev/null || echo inactive)"
   done
 fi

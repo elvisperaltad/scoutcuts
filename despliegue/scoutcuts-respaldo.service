@@ -1,0 +1,23 @@
+[Unit]
+Description=ScoutCuts: respaldo diario de los datasets/modelos entrenados por el QA
+# Los datasets de bateo/pitcheo/catcher entrenados en vivo en
+# scoutcuts.com/entrenamiento solo existen en este servidor (nunca pasan
+# por git, a diferencia del modelo de defensa). Sin este respaldo, un disco
+# danado o un borrado accidental perderia meses de entrenamiento del QA sin
+# ninguna forma de recuperarlo. Ver despliegue/respaldar-entrenamiento.sh.
+After=network.target
+
+[Service]
+Type=oneshot
+User=cortador
+Group=cortador
+EnvironmentFile=/etc/cortador-control/app.env
+WorkingDirectory=/opt/cortador-control/app
+ExecStart=/bin/bash /opt/cortador-control/app/despliegue/respaldar-entrenamiento.sh
+
+# Mismo endurecimiento que el resto de los timers auxiliares.
+ProtectSystem=strict
+ReadWritePaths=/opt/cortador-control/datos
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true

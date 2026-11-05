@@ -128,13 +128,15 @@ install -m 644 "$UNIT_DRAFT" "$SRV"
 systemctl daemon-reload
 systemd-analyze verify "$SRV"
 
-echo "==> 7/12 Instalando timers auxiliares (purga de privacidad, monitoreo de salud)"
+echo "==> 7/12 Instalando timers auxiliares (purga de privacidad, monitoreo de salud, respaldo de entrenamiento)"
 install -m 644 "$(dirname "$0")/scoutcuts-purga.service" /etc/systemd/system/scoutcuts-purga.service
 install -m 644 "$(dirname "$0")/scoutcuts-purga.timer"   /etc/systemd/system/scoutcuts-purga.timer
 install -m 644 "$(dirname "$0")/scoutcuts-monitor.service" /etc/systemd/system/scoutcuts-monitor.service
 install -m 644 "$(dirname "$0")/scoutcuts-monitor.timer"   /etc/systemd/system/scoutcuts-monitor.timer
+install -m 644 "$(dirname "$0")/scoutcuts-respaldo.service" /etc/systemd/system/scoutcuts-respaldo.service
+install -m 644 "$(dirname "$0")/scoutcuts-respaldo.timer"   /etc/systemd/system/scoutcuts-respaldo.timer
 systemctl daemon-reload
-systemctl enable --now scoutcuts-purga.timer scoutcuts-monitor.timer
+systemctl enable --now scoutcuts-purga.timer scoutcuts-monitor.timer scoutcuts-respaldo.timer
 
 echo "==> 8/12 Arrancando (o reiniciando) el servicio con la release nueva"
 systemctl enable scoutcuts.service

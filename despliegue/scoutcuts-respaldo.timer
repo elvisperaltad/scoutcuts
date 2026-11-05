@@ -1,0 +1,11 @@
+[Unit]
+Description=ScoutCuts: dispara el respaldo de la zona de entrenamiento una vez al dia
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+# Si el servidor estuvo apagado a esa hora, igual lo corre al arrancar.
+Persistent=true
+RandomizedDelaySec=600
+
+[Install]
+WantedBy=timers.target
