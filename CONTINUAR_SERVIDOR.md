@@ -290,7 +290,30 @@ funcione. Cópialos a mano a `<release>/perfiles/` (propiedad `root:cortador`,
    trabajos en `PENDIENTE_REVISION` antes de que la purga de privacidad los
    borre. Motivo: un video de defensa/pitcheo/catcher subido por la PWA cae
    hoy en ese estado (ver punto 7) y se borraria en 24h sin que nadie lo
-   revisara.**
+   revisara.** **2026-11-05: el mismo timer ahora TAMBIEN purga la zona de
+   entrenamiento** (`ZonaEntrenamiento.limpiar_vencidos`, via
+   `SCOUTCUTS_ENTRENAMIENTO`/`SCOUTCUTS_MAX_EDAD_ENTRENAMIENTO_HORAS`). Antes
+   de esta fecha, un video de practica del QA subido y nunca marcado solo se
+   limpiaba al llegar OTRA subida a esa misma disciplina -- podia quedarse
+   en disco indefinidamente, violando la misma regla de privacidad que este
+   timer existe para garantizar. Verificado en vivo con
+   `systemctl start scoutcuts-purga.service`: ambas purgas corren en la
+   misma invocacion, `status=0/SUCCESS`.
+6b. **Timer de respaldo de entrenamiento — NUEVO, instalado 2026-11-05**
+   (`scoutcuts-respaldo.timer`/`.service`, corre a las 03:00 UTC +/- 10 min,
+   `despliegue/respaldar-entrenamiento.sh`). El modelo de defensa vive en git
+   y llega a cada release por rsync (ya respaldado ahi); los datasets que el
+   QA entrena en vivo para bateo/pitcheo/catcher solo existen en este
+   servidor y nunca se copian a ningun otro lado -- sin esto, un disco
+   danado o un `rm -rf` por error perderia meses de entrenamiento del QA sin
+   ninguna forma de recuperarlo. Copia solo los `*.json` de
+   `SCOUTCUTS_ENTRENAMIENTO/modelos/` (numeros, NUNCA video) a
+   `SCOUTCUTS_ENTRENAMIENTO/respaldos/<sello-fecha>/`, y conserva las
+   ultimas `SCOUTCUTS_RESPALDOS_A_CONSERVAR` copias (default 30). Si no hay
+   zona de entrenamiento configurada, o todavia no hay nada entrenado, sale
+   limpio sin crear nada. Probado end-to-end real: video sintetico subido y
+   entrenado en pitcheo, respaldo disparado a mano, confirmado que capturo
+   el dataset nuevo; despues se limpio todo el rastro de la prueba.
 7. **Deteccion automatica de defensa, bateo, pitcheo y catcher — MODELO
    PEQUENO INCREMENTAL, con su propia zona web de entrenamiento
    (2026-11-04/05), DESPLEGADO Y VERIFICADO EN VIVO.**
@@ -459,6 +482,8 @@ En el proyecto local y copiados al servidor bajo `/opt/cortador-control/docs/`:
   `despliegue/desplegar.sh`, `despliegue/verificar-despliegue.sh`,
   `despliegue/scoutcuts-purga.service`, `despliegue/scoutcuts-purga.timer`,
   `despliegue/scoutcuts-monitor.service`, `despliegue/scoutcuts-monitor.timer`,
+  `despliegue/scoutcuts-respaldo.service`, `despliegue/scoutcuts-respaldo.timer`,
+  `despliegue/respaldar-entrenamiento.sh`,
   `despliegue/monitor-salud.sh`, `despliegue/rotar-token-qa.sh`,
   `despliegue/limpiar-releases-viejas.sh`.
 

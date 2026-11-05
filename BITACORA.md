@@ -1,5 +1,67 @@
 # Bitácora
 
+## 2026-11-05 (madrugada, 2da pasada) · Revisión autónoma: dos bugs reales corregidos y respaldo de entrenamiento nuevo
+
+El usuario autorizó trabajo autónomo amplio ("analiza el proyecto y
+cualquier otra mejora que consideres... implementa en producción") tras
+la generalización a 4 disciplinas de la entrada anterior. Revisión
+completa del proyecto; se encontraron y corrigieron dos fallas reales
+introducidas por esa misma generalización, más una mejora de
+durabilidad no pedida pero juzgada necesaria:
+
+1. **nginx desincronizado con la ruta real de subida.** La `location`
+   exacta para el límite de tasa por IP seguía apuntando a
+   `/v1/entrenamiento/videos` (forma de un solo segmento, pre-
+   generalización); la ruta real pasó a ser
+   `/v1/entrenamiento/{disciplina}/videos`. Resultado: la subida de
+   video de práctica caía en el bloque genérico, SIN `limit_req` ni
+   `proxy_request_buffering off`. Corregido con una `location` regex
+   (`^/v1/entrenamiento/[^/]+/videos$`) que cubre cualquier disciplina.
+   Verificado en vivo: la subida real atraviesa ahora el bloque
+   correcto.
+
+2. **La purga diaria por privacidad no cubría la zona de entrenamiento.**
+   `scoutcuts-purga.timer` (4am, existe específicamente porque hay
+   menores de edad en el material) solo purgaba `Almacen` (producción
+   real); `ZonaEntrenamiento.limpiar_vencidos` solo se disparaba al
+   recibir una subida NUEVA en esa misma disciplina. Un video de
+   práctica subido y nunca marcado por el QA se habría quedado en el
+   servidor indefinidamente si nadie volvía a usar esa disciplina,
+   violando la regla no negociable del proyecto. Corregido: el mismo
+   timer diario ahora también corre la purga de la zona de
+   entrenamiento. Probado en vivo: ambas purgas corrieron con éxito
+   (`status=0/SUCCESS`) en la misma invocación.
+
+3. **Respaldo diario nuevo para los datasets de entrenamiento** (mejora
+   no pedida explícitamente, juzgada necesaria). El modelo de defensa
+   vive en git y llega a cada release por rsync, así que ya estaba
+   respaldado; los datasets que el QA entrena en vivo para
+   bateo/pitcheo/catcher solo existen en el servidor y nunca se copian
+   a ningún lado — un disco dañado o un borrado accidental habría
+   perdido meses de entrenamiento sin recuperación posible.
+   `scoutcuts-respaldo.timer` (3am) copia solo los `*.json` de
+   `modelos/` (nunca video) a `entrenamiento_qa/respaldos/<fecha>/` y
+   conserva las últimas 30 copias. Probado end-to-end real: subí un
+   video sintético, lo entrené en pitcheo, disparé el respaldo a mano y
+   confirmé que capturó el dataset recién creado; luego limpié todo el
+   rastro de la prueba (video, dataset, respaldo) dejando la zona en
+   cero para el QA real.
+
+También se agregaron pruebas de la zona de entrenamiento a
+`verificar-despliegue.sh` (antes no la probaba en absoluto) y se marcó
+`SIGUIENTE.md` como desactualizado en su primera sección (describía el
+servidor como pendiente cuando lleva semanas en producción).
+
+Suite completa en verde antes de cada despliegue (320 passed, 2
+skipped). Verificado tras desplegar: hash del modelo de defensa real
+(6 ejemplos del cliente) idéntico al de antes de empezar — sin
+contaminación. Cinco timers/servicios activos en el servidor
+(`scoutcuts`, `nginx`, purga, monitoreo, respaldo). Memoria del
+servicio tras el despliegue: ~239 MB de 950 MB totales (subió del
+~90MB medido en la ronda anterior, posiblemente por el pico de
+arranque con más módulos cargados; sigue habiendo margen amplio,
+679 MB disponibles).
+
 ## 2026-11-05 (madrugada) · Zona de entrenamiento extendida a bateo, pitcheo y catcher, desplegada en vivo
 
 El usuario aclaró el dominio completo de categorías: "adelante/derecha/
