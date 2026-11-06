@@ -162,12 +162,36 @@ sleep 2
 systemctl --no-pager --full status scoutcuts.service | head -20
 
 echo "==> 9/12 Prueba de salud local (loopback), bloqueante"
-CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:8010/salud)
-if [ "$CODE" != "200" ]; then
-  echo "    /salud local respondio $CODE, se esperaba 200. Abortando antes de tocar nginx." >&2
-  exit 1
-fi
-echo "    /salud local = $CODE"
+# Uvicorn no acepta conexiones en el instante en que systemd vuelve del
+# restart del paso 8. En produccion tardo ~3 s y el unico curl que habia aqui
+# (tras `sleep 2`) murio con exit 7 "connection refused": bajo set -e eso
+# abortaba el despliegue entero antes de tocar nginx aunque el servicio habia
+# arrancado sano. Se sondea /salud hasta SALUD_ESPERA segundos y se sale en
+# cuanto conteste 200. El bucle solo observa: no reintenta nada ni reinicia el
+# servicio (si de verdad no arranca, eso lo decide el operador con el journal).
+SALUD_ESPERA=30
+SALUD_URL=http://127.0.0.1:8010/salud
+CODE=000
+ESTADO="sin intento"
+INICIO=$SECONDS
+while :; do
+  # `|| CURL_RC=$?` es lo que impide que un fallo transitorio de conexion
+  # dispare set -e; curl igual escribe 000 en stdout cuando no logra conectar.
+  CURL_RC=0
+  CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "$SALUD_URL") || CURL_RC=$?
+  [ -n "$CODE" ] || CODE=000
+  if [ "$CODE" = "200" ]; then
+    break
+  fi
+  ESTADO="codigo $CODE (curl exit $CURL_RC)"
+  if [ $((SECONDS - INICIO)) -ge "$SALUD_ESPERA" ]; then
+    echo "    /salud local no llego a 200 en ${SALUD_ESPERA}s; ultimo intento: $ESTADO." >&2
+    echo "    Abortando antes de tocar nginx. Revisa: journalctl -u scoutcuts.service -n 50" >&2
+    exit 1
+  fi
+  sleep 1
+done
+echo "    /salud local = $CODE (listo tras $((SECONDS - INICIO))s de sondeo)"
 
 echo "==> 10/12 Instalando nginx y recargando"
 cp "$NGINX_DRAFT" /etc/nginx/sites-available/scoutcuts
