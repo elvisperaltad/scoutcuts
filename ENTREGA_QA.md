@@ -1,20 +1,23 @@
 # Entrega portátil para QA
 
-Estado de la entrega: construida y validada localmente el 2026-10-09.
+Estado de la entrega: reconstruida, validada y publicada el 2026-11-06.
 
 ## Archivo que debe enviarse
 
 `dist/CortadorTurnosQA-Portable.zip`
 
-- Tamaño verificado: 242,398,363 bytes (231.2 MiB).
-- SHA-256: `440c50a4408862562c8ff22b3a5dad965a31f369e1b5116dfc6503105f871e79`.
+- Tamaño verificado: 242,443,412 bytes (231.2 MiB).
+- SHA-256: `58a12d34f13f55e2a4e8d49212a84c146a583e0d10f47c9cfcf6f39a5ab03a28`.
 - Checksum guardado en `dist/CortadorTurnosQA-Portable.zip.sha256`.
+- Descarga protegida: `https://descargas.scoutcuts.com/`. El QA usa el mismo
+  código de acceso que en la PWA; el código se envía por POST y no queda en la URL.
 
 No enviar la carpeta del repositorio, el entorno `.venv`, `DatosQA` completo ni el artefacto PyInstaller `CortadorTurnosQA-portable.zip`. Ese EXE sin firma fue bloqueado por una política empresarial de Windows. La entrega correcta usa el runtime oficial firmado de Python y tiene `Portable` con P mayúscula en el nombre.
 
 ## Instrucciones para el QA
 
-1. Copiar `CortadorTurnosQA-Portable.zip` a la computadora de prueba.
+1. Entrar a `https://descargas.scoutcuts.com/`, escribir el código de acceso y
+   descargar `CortadorTurnosQA-Portable.zip` a la computadora de prueba.
 2. Extraer el ZIP completo. No ejecutar la aplicación desde dentro del ZIP.
 3. Abrir `INICIAR_CORTADOR.bat`.
 4. Seleccionar la carpeta completa del jugador.
@@ -83,12 +86,14 @@ Por cada problema, anotar qué esperaba, qué ocurrió y con qué video sucedió
 
 ## Validación realizada antes de entregar
 
-- Suite completa: 134 pruebas aprobadas.
+- Suite completa: 324 pruebas aprobadas, 2 omitidas por plataforma.
 - Diagnóstico portátil correcto para Tkinter, NumPy, OpenCV, Cortador, FFmpeg y FFprobe.
 - ZIP comprobado completamente, sin entradas corruptas.
 - Sin videos, secretos, `DatosQA`, pruebas, cachés, Torch ni Ultralytics dentro del ZIP.
 - Runtime `pythonw.exe` con firma válida de Python Software Foundation.
 - Aplicación abierta correctamente desde una extracción limpia fuera del proyecto.
+- Descarga E2E desde producción comprobada: nombre, 242,443,412 bytes y SHA-256
+  idénticos al artefacto local; sin dejar cuentas ni archivos sintéticos.
 - `git diff --check` sin errores; solamente avisos de conversión LF/CRLF en archivos existentes.
 
 La validación pendiente es la ejecución real en la computadora del QA y el análisis del primer paquete de evidencia devuelto.

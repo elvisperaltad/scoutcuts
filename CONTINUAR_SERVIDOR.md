@@ -1,8 +1,9 @@
 # Continuación del servidor ScoutCuts
 
-Documento de relevo para otro Claude/agente. Estado actualizado el 2026-11-05
+Documento de relevo para otro Claude/agente. Estado actualizado el 2026-11-06
 en el servidor, tras desplegar y probar la API, la zona de entrenamiento,
-la purga de privacidad y el respaldo automático de modelos QA.
+la descarga protegida del instalador, la purga de privacidad y el respaldo
+automático de modelos QA.
 
 ## Regla principal
 
@@ -27,7 +28,7 @@ propietario.
 - Proyecto local: `C:/Dev/projects/cortador-turnos`.
 - **Repositorio GitHub real (fuente de verdad del codigo junto con la estacion local):**
   `https://github.com/elvisperaltad/scoutcuts.git`, rama `main`. Privado. Ultimo commit
-  verificado: `8f116cd` ("Gracia extendida de purga para videos pendientes de revision").
+  verificado: `3ddecf1` ("feat: publicar instalador protegido por codigo").
 - Servidor: `144.202.57.21`.
 - Alias SSH administrativo obligatorio: `ssh precios` (no conectar como `root@IP`).
 - **Acceso root completo agregado 2026-11-04** para un segundo desarrollador de
@@ -91,8 +92,12 @@ ssh precios 'sshd -T | grep -E "^(permitrootlogin|passwordauthentication|pubkeya
   renovación automática verificada.
 - `https://scoutcuts.com/` responde 200 (página temporal).
 - `https://api.scoutcuts.com/salud` responde 200 (API real, no 502).
-- `https://descargas.scoutcuts.com/` sigue en 502: ese servicio (entrega de
-  instaladores) todavía no se implementó; es el estado esperado.
+- `https://descargas.scoutcuts.com/` responde 200 y entrega el portátil de
+  Windows únicamente después de validar un `codigo_acceso` activo. El código
+  viaja en el cuerpo POST, no en URL, cookies ni almacenamiento del navegador.
+- El ZIP vigente tiene **242443412 bytes** y SHA-256
+  `58a12d34f13f55e2a4e8d49212a84c146a583e0d10f47c9cfcf6f39a5ab03a28`.
+  nginx lo transmite con `X-Accel-Redirect`; Python no carga sus 231 MiB en RAM.
 
 Archivos remotos: `/etc/nginx/sites-available/scoutcuts`,
 `/etc/nginx/snippets/scoutcuts-tls.conf`, `/etc/letsencrypt/live/scoutcuts.com/`.
@@ -212,18 +217,29 @@ funcione. Cópialos a mano a `<release>/perfiles/` (propiedad `root:cortador`,
   (`almacen.purgar`).
 - CDN/Object Storage se pospone.
 
-## Lo que falta (no implementado todavía)
+## Estado de pendientes y funciones completadas
 
-1. **`descargas.scoutcuts.com`** — entrega de instaladores con validación de
-   licencia; sigue en 502 a propósito.
-2. **Login/sesiones por usuario — IMPLEMENTADO LOCALMENTE (2026-11-03,
-   tarde), SIN DESPLEGAR TODAVÍA.** `src/cortador/servidor/usuarios.py`
+1. ~~**`descargas.scoutcuts.com` — entrega protegida del instalador.**~~
+   **HECHA Y DESPLEGADA (2026-11-06).** Portada estática en `web-descargas/`,
+   formulario POST sin secretos en URL, validación contra las mismas cuentas
+   de la PWA y entrega por nginx desde el `location internal /protegido/`.
+   El host ya no funciona como espejo accidental de toda la API: solo expone
+   la portada y las dos rutas de descarga. El ZIP se publica fuera de las
+   releases con `despliegue/publicar-instalador.sh`: subida temporal, SHA-256
+   verificado en el servidor y `mv` atómico. Verificación E2E real: descarga
+   completa de 242443412 bytes y hash idéntico; la cuenta temporal se retiró
+   restaurando exactamente el almacén previo. Rutas operativas:
+   `/opt/cortador-control/instaladores/` (ZIP),
+   `/var/www/scoutcuts-descargas/` (portada) y
+   `SCOUTCUTS_DESCARGAS` en `app.env`.
+2. **Login/sesiones por usuario — DESPLEGADO para la PWA y la descarga.**
+   `src/cortador/servidor/usuarios.py`
    (cuentas JSON atómicas, cuota mensual por `telegram_id`) +
    `src/cortador/servidor/bot_telegram.py` (bot de Telegram que recibe el
    video, lo mete en la MISMA `Almacen`/`Cola` que la API HTTP, y entrega el
    resultado por el mismo chat). Administración por CLI:
    `cortador usuarios crear/listar/activar/desactivar`. Documentado en
-   `TELEGRAM_BOT.md`. 240 pruebas locales pasan. El `SCOUTCUTS_TOKEN_QA`
+   `TELEGRAM_BOT.md`. El `SCOUTCUTS_TOKEN_QA`
    Bearer estático sigue existiendo para la API HTTP; el bot es un canal
    paralelo con su propio login por `telegram_id`, no un reemplazo del
    token. Decisión explícita: sin LLM local (el VPS tiene 950 MiB de RAM,
@@ -238,7 +254,8 @@ funcione. Cópialos a mano a `<release>/perfiles/` (propiedad `root:cortador`,
    falle en silencio. Para videos de cientos de MB habría que migrar a un
    Local Bot API Server propio (hasta 2 GB) — no es necesario para esta
    primera versión, documentado como extensión futura en `TELEGRAM_BOT.md`.
-   PENDIENTE antes de activar en producción real: (a) crear el bot con
+   El subsistema de cuentas ya está activo; lo que sigue PENDIENTE es activar
+   el canal de Telegram en producción: (a) crear el bot con
    @BotFather y generar `SCOUTCUTS_TELEGRAM_BOT_TOKEN`; (b) decidir y fijar
    `SCOUTCUTS_USUARIOS` en `/etc/cortador-control/app.env` (si no se fija,
    cae al default `SCOUTCUTS_DATOS/usuarios`, razonable pero debe ser una

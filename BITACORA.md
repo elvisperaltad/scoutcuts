@@ -1,5 +1,40 @@
 # Bitácora
 
+## 2026-11-06 · Instalador portátil publicado con acceso protegido
+
+Se completó el pendiente histórico de `descargas.scoutcuts.com`. La portada
+ahora responde 200 y permite descargar ScoutCuts para Windows con el mismo
+`codigo_acceso` activo que usa la PWA. El código se envía en un formulario
+POST y no queda en la URL, en cookies ni en almacenamiento del navegador.
+La API solo autoriza y responde con `X-Accel-Redirect`; nginx transmite el ZIP
+directamente desde disco, sin cargar **242443412 bytes** en el proceso Python
+del VPS de 950 MiB. Los códigos falsos y las cuentas desactivadas reciben la
+misma respuesta 401 para no revelar qué cuentas existen.
+
+También se cerró una superficie innecesaria: el vhost de descargas antes
+reenviaba cualquier ruta a la API. Ahora únicamente sirve la portada y las
+rutas exactas de descarga; `/v1/trabajos` y demás rutas responden 404 bajo ese
+dominio, y `/protegido/` es interno (una petición directa también recibe 404).
+El ZIP vive fuera de las releases, con permisos `root:entrega 640`, y se
+publica mediante `publicar-instalador.sh`: nombre temporal, comprobación local
+y remota del SHA-256 y reemplazo atómico. Hash publicado:
+`58a12d34f13f55e2a4e8d49212a84c146a583e0d10f47c9cfcf6f39a5ab03a28`.
+
+Pruebas: **324 passed, 2 skipped**. El flujo real descargó el ZIP completo,
+verificó tamaño, nombre y hash, y restauró exactamente el almacén de usuarios
+previo sin dejar una cuenta sintética. El verificador oficial terminó en verde
+y borró su propia sonda. Sitio, entrenamiento, API, descargas, nginx, servicio,
+purga, monitor y respaldo quedaron activos; el modelo real de defensa conservó
+sus hashes.
+
+Incidente durante el despliegue: el paso de salud intentó conectar dos segundos
+después del reinicio, pero esta vez Uvicorn tardó aproximadamente tres segundos
+en estar listo. El script se detuvo antes de tocar nginx; se confirmó que el
+servicio había arrancado correctamente y se completaron manualmente los pasos
+10–12. Queda pendiente sustituir ese `sleep 2` fijo por un sondeo acotado de
+`/salud`, para que un arranque sano pero ligeramente lento no vuelva a producir
+un falso fallo.
+
 ## 2026-11-05 · El verificador de despliegue ya no deja trabajos sintéticos
 
 La auditoría encontró que cada ejecución autenticada de
