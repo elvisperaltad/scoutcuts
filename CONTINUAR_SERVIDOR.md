@@ -28,7 +28,7 @@ propietario.
 - Proyecto local: `C:/Dev/projects/cortador-turnos`.
 - **Repositorio GitHub real (fuente de verdad del codigo junto con la estacion local):**
   `https://github.com/elvisperaltad/scoutcuts.git`, rama `main`. Privado. Ultimo commit
-  verificado: `3ddecf1` ("feat: publicar instalador protegido por codigo").
+  funcional verificado: `f653a60` ("fix: esperar a que la API quede lista al desplegar").
 - Servidor: `144.202.57.21`.
 - Alias SSH administrativo obligatorio: `ssh precios` (no conectar como `root@IP`).
 - **Acceso root completo agregado 2026-11-04** para un segundo desarrollador de

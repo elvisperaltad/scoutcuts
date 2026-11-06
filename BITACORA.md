@@ -27,13 +27,15 @@ y borró su propia sonda. Sitio, entrenamiento, API, descargas, nginx, servicio,
 purga, monitor y respaldo quedaron activos; el modelo real de defensa conservó
 sus hashes.
 
-Incidente durante el despliegue: el paso de salud intentó conectar dos segundos
-después del reinicio, pero esta vez Uvicorn tardó aproximadamente tres segundos
-en estar listo. El script se detuvo antes de tocar nginx; se confirmó que el
-servicio había arrancado correctamente y se completaron manualmente los pasos
-10–12. Queda pendiente sustituir ese `sleep 2` fijo por un sondeo acotado de
-`/salud`, para que un arranque sano pero ligeramente lento no vuelva a producir
-un falso fallo.
+Incidente durante el primer despliegue: el paso de salud intentó conectar dos
+segundos después del reinicio, pero esa vez Uvicorn tardó aproximadamente tres
+segundos en estar listo. El script se detuvo antes de tocar nginx; se confirmó
+que el servicio había arrancado correctamente y se completaron manualmente los
+pasos 10–12. Ya quedó corregido: el despliegue sondea `/salud` hasta 30 segundos,
+tolera rechazos de conexión transitorios bajo `set -e`, sale en cuanto recibe
+200 y no reinicia el servicio dentro del bucle. Se volvió a ejecutar el
+despliegue completo en producción: terminó 12/12 y el verificador E2E quedó
+totalmente verde, sin trabajos ni sondas residuales.
 
 ## 2026-11-05 · El verificador de despliegue ya no deja trabajos sintéticos
 
