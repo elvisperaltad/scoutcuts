@@ -17,9 +17,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from fastapi import Depends, FastAPI, File, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel
 from starlette.exceptions import HTTPException as HTTPExceptionStarlette
 
@@ -55,6 +55,15 @@ MENSAJE_BORRADO_EN_CURSO = (
 )
 MENSAJE_NO_ENCONTRADO = "No encontramos ese trabajo."
 MENSAJE_INTERNO = "Tuvimos un problema al procesar tu solicitud. Intentalo de nuevo."
+
+# Nombre fijo del instalador portable que entrega descargas.scoutcuts.com. Es
+# una constante del codigo, nunca un dato que venga de la peticion: asi la
+# ruta en disco y la ruta interna de nginx no pueden salirse de su carpeta.
+NOMBRE_INSTALADOR = "CortadorTurnosQA-Portable.zip"
+MENSAJE_INSTALADOR_NO_DISPONIBLE = (
+    "La descarga no esta disponible en este momento. Intentalo mas tarde o "
+    "escribenos para que te ayudemos."
+)
 
 _LOGGER = logging.getLogger("cortador.servidor.api")
 
@@ -95,6 +104,7 @@ class Config:
     token_entrenamiento: str | None = None
     entrenamiento_base: Path | None = None
     max_edad_entrenamiento_horas: float = 24.0
+    descargas_base: Path | None = None
 
     def __post_init__(self) -> None:
         self.raiz = Path(self.raiz)
@@ -106,6 +116,8 @@ class Config:
             self.usuarios_base = Path(self.usuarios_base)
         if self.entrenamiento_base is not None:
             self.entrenamiento_base = Path(self.entrenamiento_base)
+        if self.descargas_base is not None:
+            self.descargas_base = Path(self.descargas_base)
 
     @property
     def usuarios_raiz(self) -> Path:
@@ -118,6 +130,14 @@ class Config:
         return (
             self.entrenamiento_base if self.entrenamiento_base is not None
             else self.raiz / "entrenamiento_qa"
+        )
+
+    @property
+    def descargas_raiz(self) -> Path:
+        """Carpeta con los instaladores que entrega nginx (solo lectura)."""
+        return (
+            self.descargas_base if self.descargas_base is not None
+            else self.raiz / "descargas"
         )
 
     @classmethod
@@ -157,6 +177,10 @@ class Config:
         ).strip() or None
         entrenamiento_env = entorno.get("SCOUTCUTS_ENTRENAMIENTO")
         max_edad_entrenamiento = entorno.get("SCOUTCUTS_MAX_EDAD_ENTRENAMIENTO_HORAS")
+        # Carpeta donde el administrador deja el ZIP del instalador. Sin la
+        # variable cae al default `SCOUTCUTS_DATOS/descargas` (ver
+        # descargas_raiz): nunca una ruta absoluta escrita en el codigo.
+        descargas_env = entorno.get("SCOUTCUTS_DESCARGAS")
         return cls(
             token=token,
             raiz=Path(raiz),
@@ -173,6 +197,7 @@ class Config:
             max_edad_entrenamiento_horas=(
                 float(max_edad_entrenamiento) if max_edad_entrenamiento else 24.0
             ),
+            descargas_base=Path(descargas_env) if descargas_env else None,
         )
 
 
@@ -555,6 +580,66 @@ def crear_app(config: Config | None = None, *,
         return FileResponse(
             str(ruta), media_type="video/mp4",
             filename=f"montaje-{identificador}.mp4")
+
+    # --- Entrega protegida del instalador (descargas.scoutcuts.com) ---
+    #
+    # El ZIP pesa cientos de MiB y el servidor tiene un solo nucleo: Python
+    # solo autoriza y delega el envio a nginx con X-Accel-Redirect, nunca
+    # abre ni lee el archivo. El codigo de acceso viaja siempre en el cuerpo
+    # de un POST: en la URL quedaria en los logs de nginx, en el historial
+    # del navegador y en la cabecera Referer de cualquier enlace posterior.
+
+    def _pagina_descargas(mensaje: str = "", estado: int = 200) -> HTMLResponse:
+        aviso = f"<p>{mensaje}</p>" if mensaje else ""
+        return HTMLResponse(status_code=estado, content=(
+            "<!doctype html>"
+            '<html lang="es">'
+            "<head>"
+            '<meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width, initial-scale=1">'
+            "<title>Descargar ScoutCuts</title>"
+            "</head>"
+            "<body>"
+            "<h1>Descargar ScoutCuts</h1>"
+            "<p>Escribe tu codigo de acceso para bajar el programa. "
+            "Es el mismo codigo con el que entras a subir tus videos.</p>"
+            f"{aviso}"
+            '<form method="post" action="/v1/descargas/instalador">'
+            '<label for="codigo_acceso">Tu codigo de acceso</label>'
+            '<input id="codigo_acceso" name="codigo_acceso" type="text" '
+            'autocomplete="off" required>'
+            '<button type="submit">Descargar</button>'
+            "</form>"
+            "<p>Si no tienes codigo o no te funciona, escribenos y te ayudamos.</p>"
+            "</body>"
+            "</html>"
+        ))
+
+    @app.get("/v1/descargas", response_class=HTMLResponse)
+    def descargas_pagina():
+        return _pagina_descargas()
+
+    @app.post("/v1/descargas/instalador")
+    def descargas_instalador(codigo_acceso: str = Form(default="")):
+        usuario = usuarios.por_codigo_acceso(codigo_acceso.strip())
+        if usuario is None or not usuario.activo:
+            # Misma respuesta exacta para un codigo inventado y para uno real
+            # pero desactivado: quien prueba codigos al azar no debe poder
+            # deducir cual de los dos acerto.
+            return _pagina_descargas(MENSAJE_SIN_CODIGO, estado=401)
+        # Bajar el instalador no procesa ningun video: no se registra uso ni
+        # se consulta la cuota mensual del scout.
+        ruta = config.descargas_raiz / NOMBRE_INSTALADOR
+        if not ruta.is_file():
+            # El scout no tiene por que enterarse de rutas ni de que falta un
+            # archivo en el servidor; para el es que la descarga no esta lista.
+            _LOGGER.error("El instalador no esta disponible para la entrega.")
+            return _pagina_descargas(MENSAJE_INSTALADOR_NO_DISPONIBLE, estado=503)
+        return Response(status_code=200, content=b"", headers={
+            "X-Accel-Redirect": f"/protegido/{NOMBRE_INSTALADOR}",
+            "Content-Disposition": f'attachment; filename="{NOMBRE_INSTALADOR}"',
+            "Content-Type": "application/zip",
+        })
 
     # --- Zona de entrenamiento QA (scoutcuts.com/entrenamiento) ---
     #

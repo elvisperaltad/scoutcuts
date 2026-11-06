@@ -48,9 +48,13 @@ def servicio(tmp_path) -> Callable[..., Servicio]:
 
     def construir(procesar=None, *, raiz=None, limite_bytes=None, accel=False,
                   max_edad_horas=24.0, qa_base=None, errores_crudos=True,
-                  perfiles=None) -> Servicio:
+                  perfiles=None, descargas=None) -> Servicio:
         datos = Path(raiz) if raiz else tmp_path / "datos"
         opciones = {} if limite_bytes is None else {"limite_bytes": limite_bytes}
+        # Solo se pasa si la prueba lo pide: asi las pruebas que no tocan la
+        # entrega del instalador no dependen de ese campo de Config.
+        if descargas is not None:
+            opciones["descargas_base"] = Path(descargas)
         config = api_mod.Config(
             token=TOKEN, raiz=datos, accel=accel, max_edad_horas=max_edad_horas,
             qa_base=Path(qa_base) if qa_base else tmp_path / "qa", **opciones,

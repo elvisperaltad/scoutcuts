@@ -22,6 +22,11 @@ BASE=/opt/cortador-control
 RELEASES="$BASE/releases-app"
 APP="$BASE/app"
 DATOS="$BASE/datos"
+# Carpeta del ZIP del instalador que entrega descargas.scoutcuts.com. Vive
+# FUERA de las releases a proposito: el instalador se publica a mano (ver
+# despliegue/publicar-instalador.sh) y no debe borrarse ni reemplazarse cada
+# vez que se despliega codigo nuevo.
+INSTALADORES="$BASE/instaladores"
 ENVF=/etc/cortador-control/app.env
 SRV=/etc/systemd/system/scoutcuts.service
 SOURCE=${SOURCE:?Define SOURCE=/ruta/al/codigo/integrado y vuelve a correr}
@@ -102,6 +107,9 @@ else
   echo "    = SCOUTCUTS_TOKEN_ENTRENAMIENTO ya existe (no la toco)"
 fi
 add_var SCOUTCUTS_ENTRENAMIENTO "$DATOS/entrenamiento_qa"
+# Carpeta del instalador. La API solo necesita comprobar que el ZIP existe
+# antes de delegar el envio a nginx (X-Accel-Redirect); nunca lo abre.
+add_var SCOUTCUTS_DESCARGAS    "$INSTALADORES"
 
 echo "==> 4/12 Grupo de entrega y carpetas de datos"
 getent group entrega >/dev/null || groupadd --system entrega
@@ -118,6 +126,15 @@ install -d -o cortador -g cortador -m 750 "$DATOS/tmp"
 # 2750 = setgid: todo lo que cortador cree dentro hereda el grupo `entrega`,
 # así nginx (www-data, miembro de `entrega`) puede atravesar y leer sin que
 # el propio proceso de la API tenga que saberlo ni sin abrir a otros usuarios.
+#
+# Carpeta del instalador: dueño root (NO cortador). La API corre como
+# cortador y lo único que hace con el ZIP es `is_file()`; con root:entrega
+# 2750, cortador (miembro de `entrega`) puede atravesar la carpeta y mirar el
+# archivo, www-data puede leerlo para enviarlo, y ni uno ni otro puede
+# escribir ahí: el instalador solo entra por scp como root
+# (publicar-instalador.sh). Así un fallo de la API nunca puede sustituir el
+# ejecutable que descargan los clientes.
+install -d -o root -g entrega -m 2750 "$INSTALADORES"
 
 echo "==> 5/12 Activando la release (symlink atomico)"
 ln -sfn "$RELEASE" "$APP.nuevo"
@@ -157,7 +174,7 @@ cp "$NGINX_DRAFT" /etc/nginx/sites-available/scoutcuts
 nginx -t
 systemctl reload nginx
 
-echo "==> 11/12 Publicando la PWA (web/) en /var/www/scoutcuts"
+echo "==> 11/12 Publicando los sitios estaticos (PWA y portada de descargas)"
 if [ ! -d "$RELEASE/web" ]; then
   echo "    No hay carpeta web/ en la release; se deja /var/www/scoutcuts como estaba." >&2
 else
@@ -169,6 +186,29 @@ else
   find /var/www/scoutcuts -type d -exec chmod 755 {} +
   find /var/www/scoutcuts -type f -exec chmod 644 {} +
   echo "    PWA publicada: $(find /var/www/scoutcuts -maxdepth 1 -type f | wc -l) archivos en la raiz"
+fi
+# Portada de descargas.scoutcuts.com: carpeta y vhost propios, separados de
+# la PWA. Van en el mismo paso para no cambiar la numeracion de los 12 (y
+# porque es la misma operacion: publicar HTML estatico desde la release).
+# El --delete es seguro aqui porque este destino solo lo escribe este
+# bloque; se excluye .well-known por si algun dia certbot usa este root.
+if [ ! -d "$RELEASE/web-descargas" ]; then
+  echo "    No hay carpeta web-descargas/ en la release; se deja /var/www/scoutcuts-descargas como estaba." >&2
+else
+  install -d -o root -g root -m 755 /var/www/scoutcuts-descargas
+  rsync -a --delete \
+    --exclude '.well-known' \
+    "$RELEASE/web-descargas/" /var/www/scoutcuts-descargas/
+  chown -R root:root /var/www/scoutcuts-descargas
+  find /var/www/scoutcuts-descargas -type d -exec chmod 755 {} +
+  find /var/www/scoutcuts-descargas -type f -exec chmod 644 {} +
+  echo "    Portada de descargas publicada: $(find /var/www/scoutcuts-descargas -maxdepth 1 -type f | wc -l) archivos en la raiz"
+fi
+# Aviso (no error): el vhost de descargas ya responde, pero sin el ZIP la
+# API contesta 503 con un mensaje para el cliente. Se publica aparte.
+if [ ! -f "$INSTALADORES/CortadorTurnosQA-Portable.zip" ]; then
+  echo "    Aviso: todavia no hay instalador en $INSTALADORES; la descarga respondera 'no disponible'." >&2
+  echo "    Subelo desde tu equipo con: bash despliegue/publicar-instalador.sh" >&2
 fi
 
 echo "==> 12/12 Limpiando releases viejas (conserva las ultimas 5 + la activa)"

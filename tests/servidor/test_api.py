@@ -506,3 +506,86 @@ def test_fallo_sincrono_al_construir_el_bot_tampoco_filtra_el_token(servicio, ca
 
     assert respuesta.status_code == 200
     assert token_secreto not in caplog.text
+
+
+NOMBRE_INSTALADOR = "CortadorTurnosQA-Portable.zip"
+
+
+def test_descarga_del_instalador_pide_el_codigo_por_formulario_y_lo_entrega_por_nginx(
+        servicio, tmp_path):
+    """Entrega protegida del instalador (descargas.scoutcuts.com).
+
+    El ZIP pesa ~231 MiB en un servidor de un solo nucleo: la API nunca debe
+    leerlo ni enviarlo ella misma, solo autorizar y delegar el envio a nginx
+    con `X-Accel-Redirect` (cuerpo vacio). El codigo de acceso viaja en el
+    cuerpo de un POST, nunca en la URL: en la URL quedaria en los logs de
+    nginx, en el historial del navegador y en el Referer. Descargar el
+    instalador no es procesar un video, asi que no gasta cuota mensual.
+    """
+    carpeta = tmp_path / "releases"
+    activo = servicio(_entrega(), descargas=carpeta)
+    carpeta.mkdir(parents=True, exist_ok=True)
+    (carpeta / NOMBRE_INSTALADOR).write_bytes(b"PK\x03\x04" + b"instalador" * 1024)
+
+    from cortador.servidor.usuarios import Usuarios
+
+    usuarios = Usuarios(activo.config.usuarios_raiz)
+    ana = usuarios.crear("", "Ana Scout", cuota_mensual=20)
+    inactivo = usuarios.crear("", "Luis Baja", cuota_mensual=20)
+    usuarios.desactivar(inactivo)
+
+    pagina = activo.cliente.get("/v1/descargas")
+
+    assert pagina.status_code == 200
+    assert "text/html" in pagina.headers["content-type"]
+    html = pagina.text.lower()
+    assert "<form" in html
+    assert 'method="post"' in html or "method='post'" in html
+    assert "/v1/descargas/instalador" in html
+    assert 'name="codigo_acceso"' in html or "name='codigo_acceso'" in html
+
+    entrega = activo.cliente.post(
+        "/v1/descargas/instalador", data={"codigo_acceso": ana.codigo_acceso})
+
+    assert entrega.status_code == 200
+    assert entrega.content == b""            # el ZIP lo sirve nginx, no Python
+    assert entrega.headers["x-accel-redirect"] == f"/protegido/{NOMBRE_INSTALADOR}"
+    disposicion = entrega.headers["content-disposition"]
+    assert "attachment" in disposicion
+    assert NOMBRE_INSTALADOR in disposicion
+    assert usuarios.por_codigo_acceso(ana.codigo_acceso).usados_mes == 0
+
+    falso = activo.cliente.post(
+        "/v1/descargas/instalador", data={"codigo_acceso": "CODIGO-FALSO"})
+    desactivada = activo.cliente.post(
+        "/v1/descargas/instalador", data={"codigo_acceso": inactivo.codigo_acceso})
+
+    assert falso.status_code == 401
+    assert desactivada.status_code == 401
+    # Misma respuesta exacta: quien prueba codigos al azar no puede deducir
+    # cual existe y solo esta desactivado.
+    assert falso.text == desactivada.text
+    assert "x-accel-redirect" not in falso.headers
+    assert "x-accel-redirect" not in desactivada.headers
+    for secreto in ("CODIGO-FALSO", inactivo.codigo_acceso, str(carpeta)):
+        assert secreto not in falso.text + desactivada.text
+
+
+def test_config_descargas_lee_scoutcuts_descargas_con_default_bajo_raiz(tmp_path):
+    """La carpeta de instaladores se configura como el resto (una variable y
+    un default dentro de `raiz`), nunca una ruta absoluta escrita en codigo."""
+    pytest.importorskip("fastapi", reason="falta el extra `servidor`")
+    from cortador.servidor import api
+
+    base = {"SCOUTCUTS_TOKEN_QA": "x" * 20, "SCOUTCUTS_DATOS": str(tmp_path)}
+    otra = tmp_path / "releases_aparte"
+
+    config = api.Config.desde_entorno({**base, "SCOUTCUTS_DESCARGAS": str(otra)})
+    assert config.descargas_raiz == otra
+
+    sin_variable = api.Config.desde_entorno(base)
+    assert sin_variable.descargas_raiz == tmp_path / "descargas"
+
+    explicito = api.Config(
+        token="x" * 20, raiz=tmp_path, descargas_base=tmp_path / "otra_carpeta")
+    assert explicito.descargas_raiz == tmp_path / "otra_carpeta"

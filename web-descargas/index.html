@@ -1,0 +1,265 @@
+<!doctype html>
+<!--
+  Portada de descargas.scoutcuts.com. La sirve nginx como archivo estatico
+  (location = / en despliegue/nginx-scoutcuts.conf); la API de Python solo
+  atiende el POST del formulario, asi no gasta el unico nucleo del servidor
+  en pintar HTML.
+
+  Decisiones que NO se deben cambiar sin pensarlo dos veces:
+  - El formulario es POST puro, sin JavaScript. Con GET el codigo de acceso
+    quedaria en la URL, y de ahi pasa a los logs de nginx, al historial del
+    navegador y a la cabecera Referer de cualquier enlace posterior.
+  - No hay nada de JS en esta pagina: el codigo nunca se guarda en
+    localStorage, sessionStorage ni cookies. Si el scout cierra la pestana,
+    no queda rastro del codigo en su equipo.
+  - Todo (estilos e icono) va embebido: ni frameworks, ni fuentes, ni
+    imagenes externas. Una sola peticion, cero terceros, y funciona igual
+    con la conexion mala de un estadio.
+-->
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Descargar ScoutCuts para Windows</title>
+<meta name="theme-color" content="#0f172a">
+<meta name="description" content="Descarga el programa de ScoutCuts para Windows con tu codigo de acceso.">
+<meta name="referrer" content="no-referrer">
+<!-- Icono embebido: evita una peticion extra (y un 404) por /favicon.ico. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230f172a'/%3E%3Cpath d='M8 17.5l5 5 11-13' fill='none' stroke='%2322c55e' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --fondo: #0f172a;
+    --tarjeta: #1e293b;
+    --texto: #f1f5f9;
+    --texto-tenue: #94a3b8;
+    --acento: #22c55e;
+    --acento-oscuro: #16a34a;
+    --borde: #334155;
+    --hueco: #0b1220;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--fondo);
+    color: var(--texto);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    line-height: 1.55;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  header {
+    padding: 28px 20px 8px;
+    text-align: center;
+  }
+  .marca {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    margin: 0;
+  }
+  .marca svg { display: block; }
+  header p {
+    color: var(--texto-tenue);
+    font-size: 14px;
+    margin: 8px 0 0;
+  }
+  main {
+    flex: 1;
+    width: 100%;
+    max-width: 620px;
+    margin: 0 auto;
+    padding: 16px;
+  }
+  .tarjeta {
+    background: var(--tarjeta);
+    border: 1px solid var(--borde);
+    border-radius: 14px;
+    padding: 22px;
+    margin-bottom: 16px;
+  }
+  h2 {
+    font-size: 17px;
+    margin: 0 0 12px;
+  }
+  p { margin: 0 0 12px; }
+  p:last-child { margin-bottom: 0; }
+  .tenue { color: var(--texto-tenue); font-size: 14px; }
+  label {
+    display: block;
+    font-size: 13px;
+    color: var(--texto-tenue);
+    margin-bottom: 6px;
+  }
+  input[type="text"] {
+    width: 100%;
+    padding: 14px;
+    font-size: 20px;
+    letter-spacing: 2px;
+    text-align: center;
+    text-transform: uppercase;
+    border-radius: 10px;
+    border: 1px solid var(--borde);
+    background: var(--hueco);
+    color: var(--texto);
+    margin-bottom: 14px;
+  }
+  input[type="text"]:focus {
+    outline: 2px solid var(--acento);
+    border-color: var(--acento);
+  }
+  button {
+    width: 100%;
+    padding: 15px;
+    font-size: 16px;
+    font-weight: 600;
+    border-radius: 10px;
+    border: none;
+    background: var(--acento);
+    color: #04210f;
+    cursor: pointer;
+  }
+  button:hover { background: var(--acento-oscuro); }
+  button:active { background: var(--acento-oscuro); }
+  button:focus-visible { outline: 3px solid var(--texto); outline-offset: 2px; }
+  ol, ul { margin: 0; padding-left: 22px; }
+  ol li, ul li { margin-bottom: 8px; }
+  ol li:last-child, ul li:last-child { margin-bottom: 0; }
+  code {
+    background: var(--hueco);
+    border: 1px solid var(--borde);
+    border-radius: 6px;
+    padding: 1px 6px;
+    font-size: 14px;
+    white-space: nowrap;
+  }
+  .destacado {
+    border-left: 3px solid var(--acento);
+    padding-left: 12px;
+    color: var(--texto-tenue);
+    font-size: 14px;
+  }
+  footer {
+    text-align: center;
+    padding: 18px 16px 24px;
+    color: var(--texto-tenue);
+    font-size: 12px;
+  }
+  footer a { color: var(--acento); text-decoration: none; }
+  /* Escritorio: la tarjeta del formulario no necesita crecer a lo ancho de
+     un monitor grande, pero los pasos si se leen mejor con mas aire. */
+  @media (min-width: 680px) {
+    header { padding-top: 44px; }
+    .marca { font-size: 28px; }
+    main { padding: 20px 0 8px; }
+    .tarjeta { padding: 26px 28px; }
+    form.compacta { max-width: 360px; margin: 0 auto; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    button { transition: background 0.15s ease; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1 class="marca">
+    <svg width="30" height="30" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+      <rect width="32" height="32" rx="7" fill="#1e293b"></rect>
+      <path d="M8 17.5l5 5 11-13" fill="none" stroke="#22c55e" stroke-width="3.5"
+            stroke-linecap="round" stroke-linejoin="round"></path>
+    </svg>
+    ScoutCuts
+  </h1>
+  <p>Descarga el programa para tu computadora con Windows</p>
+</header>
+
+<main>
+
+  <section class="tarjeta">
+    <h2>Escribe tu código de acceso</h2>
+    <p class="tenue">
+      Es el mismo código con el que entras a subir tus videos. Si lo escribes
+      bien, la descarga empieza sola y te quedas en esta misma página.
+    </p>
+    <!-- POST al endpoint de la API (nginx lo proxea solo para esta ruta). El
+         codigo viaja en el cuerpo, nunca en la URL. Sin JavaScript: funciona
+         igual con el navegador que traiga el scout. -->
+    <form class="compacta" method="post" action="/v1/descargas/instalador">
+      <label for="codigo_acceso">Tu código de acceso</label>
+      <input id="codigo_acceso"
+             name="codigo_acceso"
+             type="text"
+             maxlength="12"
+             size="12"
+             autocapitalize="characters"
+             autocomplete="off"
+             autocorrect="off"
+             spellcheck="false"
+             inputmode="text"
+             enterkeyhint="go"
+             placeholder="EJ: AB23CD45"
+             aria-describedby="ayuda-codigo"
+             required>
+      <button type="submit">Descargar para Windows</button>
+    </form>
+    <p id="ayuda-codigo" class="tenue" style="margin-top:14px;">
+      ¿No tienes código o no te funciona? Escríbenos y te ayudamos: es
+      gratis y te lo resolvemos el mismo día.
+    </p>
+  </section>
+
+  <section class="tarjeta">
+    <h2>Qué hacer cuando termine la descarga</h2>
+    <ol>
+      <li>
+        El archivo que se baja es un ZIP. <strong>Extrae todo el ZIP</strong>
+        en una carpeta de tu computadora (clic derecho sobre el archivo &rarr;
+        <em>Extraer todo</em>).
+      </li>
+      <li>
+        No abras el programa desde dentro del ZIP: primero hay que extraerlo
+        completo, si no, no funciona.
+      </li>
+      <li>
+        Entra en la carpeta que acabas de extraer y abre
+        <code>INICIAR_CORTADOR.bat</code> con doble clic.
+      </li>
+      <li>
+        Si no abre o se cierra solo, abre <code>DIAGNOSTICO.bat</code> (está en
+        la misma carpeta), toma una captura de pantalla completa de lo que
+        aparece y envíanosla. Con eso sabemos qué pasó.
+      </li>
+    </ol>
+  </section>
+
+  <section class="tarjeta">
+    <h2>Antes de empezar</h2>
+    <ul>
+      <li>Necesitas una computadora con <strong>Windows</strong>. No funciona en teléfonos ni tablets.</li>
+      <li>No hace falta instalar nada más: el programa trae todo lo que necesita dentro.</li>
+      <li>
+        El archivo es grande, así que conviene descargarlo con una conexión
+        estable y no apagar la computadora mientras baja.
+      </li>
+      <li>Para subir videos desde el teléfono, usa <a href="https://scoutcuts.com/">scoutcuts.com</a>.</li>
+    </ul>
+    <p class="destacado" style="margin-top:14px;">
+      Tu código es personal. No lo compartas ni lo pegues en grupos: cualquiera
+      con ese código podría usar tu cuenta.
+    </p>
+  </section>
+
+</main>
+
+<footer>
+  ScoutCuts · <a href="https://scoutcuts.com/">scoutcuts.com</a>
+</footer>
+
+</body>
+</html>
