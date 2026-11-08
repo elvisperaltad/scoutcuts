@@ -115,6 +115,8 @@ Antes de recargar: `ssh precios 'nginx -t && systemctl reload nginx'`.
 - Secretos en `/etc/cortador-control/app.env`, propiedad `root:cortador`, `640`.
 - Variables activas: `SCOUTCUTS_TOKEN_QA` (generado en el servidor, nunca por
   chat), `SCOUTCUTS_DATOS`, `SCOUTCUTS_QA`, `SCOUTCUTS_PERFILES`,
+  `SCOUTCUTS_USUARIOS` (`/opt/cortador-control/datos/usuarios`, fijada
+  explícitamente el 2026-11-06),
   `SCOUTCUTS_ENTREGA_NGINX=1`.
 - Nunca leer, copiar, imprimir o incluir el valor de ninguna variable de este
   archivo en documentación, logs, comandos enviados al chat o repositorio.
@@ -256,13 +258,10 @@ funcione. Cópialos a mano a `<release>/perfiles/` (propiedad `root:cortador`,
    primera versión, documentado como extensión futura en `TELEGRAM_BOT.md`.
    El subsistema de cuentas ya está activo; lo que sigue PENDIENTE es activar
    el canal de Telegram en producción: (a) crear el bot con
-   @BotFather y generar `SCOUTCUTS_TELEGRAM_BOT_TOKEN`; (b) decidir y fijar
-   `SCOUTCUTS_USUARIOS` en `/etc/cortador-control/app.env` (si no se fija,
-   cae al default `SCOUTCUTS_DATOS/usuarios`, razonable pero debe ser una
-   decisión consciente); (c) `pip install -e .[telegram]` en el venv del
-   servicio; (d) registrar manualmente a los primeros scouts con
+   @BotFather y generar `SCOUTCUTS_TELEGRAM_BOT_TOKEN`; (b) `pip install -e
+   .[telegram]` en el venv del servicio; (c) registrar manualmente a los primeros scouts con
    `cortador usuarios crear` ANTES de anunciarles el bot (nadie se
-   auto-registra); (e) desplegar con `desplegar.sh` normal (no requiere
+   auto-registra); (d) desplegar con `desplegar.sh` normal (no requiere
    cambios en nginx ni en systemd: el bot corre dentro del mismo proceso
    `scoutcuts.service`, en un hilo daemon aparte).
 3. **Rotación/revocación del token QA — IMPLEMENTADO (2026-11-04).**

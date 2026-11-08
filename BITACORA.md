@@ -1,5 +1,24 @@
 # Bitácora
 
+## 2026-11-06 · Almacén de usuarios aislado de nginx
+
+Al cerrar el pendiente de fijar `SCOUTCUTS_USUARIOS` explícitamente se detectó
+un problema de permisos real: como la ruta no existía al preparar el servidor,
+el proceso la había creado debajo de `datos/`, heredando el grupo `entrega` y
+permisos que permitían a `www-data` atravesarla y leer los JSON de cuentas e
+índices de códigos. nginx no exponía esos archivos por ninguna ruta HTTP, pero
+no necesita acceso local a credenciales y la separación era innecesariamente
+débil.
+
+Se corrigió en producción: `SCOUTCUTS_USUARIOS` apunta ahora de forma explícita
+a `/opt/cortador-control/datos/usuarios`, todo el árbol pertenece a
+`cortador:cortador`, los directorios no admiten acceso de otros usuarios y se
+verificó con `runuser` que `www-data` ya no puede leer la carpeta. Las dos
+cuentas existentes se conservaron. `desplegar.sh` crea y reafirma esos permisos
+en cada despliegue futuro, separado del grupo `entrega` que sí necesita nginx
+para videos/resultados. Suite completa: **324 passed, 2 skipped**; `/salud`
+volvió a 200 tras el reinicio.
+
 ## 2026-11-06 · Instalador portátil publicado con acceso protegido
 
 Se completó el pendiente histórico de `descargas.scoutcuts.com`. La portada
