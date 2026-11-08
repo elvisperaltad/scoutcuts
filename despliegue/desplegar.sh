@@ -95,6 +95,10 @@ fi
 add_var SCOUTCUTS_DATOS        "$DATOS"
 add_var SCOUTCUTS_QA            "$DATOS/qa"
 add_var SCOUTCUTS_PERFILES     "$APP/perfiles"
+# Almacen de cuentas de scouts (ver CONTINUAR_SERVIDOR.md, punto 2): coincide
+# con el default del codigo, pero se fija explicito para que la ruta sea una
+# decision visible del despliegue y no un implicito.
+add_var SCOUTCUTS_USUARIOS     "$DATOS/usuarios"
 add_var SCOUTCUTS_ENTREGA_NGINX 1
 # Token de entrenamiento: separado del token QA de produccion a proposito
 # (ver CONTINUAR_SERVIDOR.md, punto 7). Si no se define, la zona
@@ -119,6 +123,10 @@ install -d -o cortador -g entrega -m 2750 "$DATOS"
 install -d -o cortador -g entrega -m 2750 "$DATOS/trabajos"
 install -d -o cortador -g cortador -m 750 "$DATOS/qa"
 install -d -o cortador -g cortador -m 750 "$DATOS/entrenamiento_qa"
+# Cuentas de scouts: cortador:cortador 750, FUERA del grupo `entrega` a
+# proposito. Guarda codigos de acceso y datos de cuenta; nginx (www-data) no
+# tiene nada que servir de aqui y no debe poder leerlo.
+install -d -o cortador -g cortador -m 750 "$DATOS/usuarios"
 # TMPDIR del servicio (ver scoutcuts.service): particion real, nunca tmpfs,
 # para que las partes de un multipart que Starlette desborda a disco no
 # terminen en RAM. Debe existir antes de arrancar el servicio.
