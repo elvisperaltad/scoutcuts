@@ -28,7 +28,7 @@ propietario.
 - Proyecto local: `C:/Dev/projects/cortador-turnos`.
 - **Repositorio GitHub real (fuente de verdad del codigo junto con la estacion local):**
   `https://github.com/elvisperaltad/scoutcuts.git`, rama `main`. Privado. Ultimo commit
-  funcional verificado: `f653a60` ("fix: esperar a que la API quede lista al desplegar").
+  funcional verificado: `6a48bb7` ("security: endurecer la portada de descargas").
 - Servidor: `144.202.57.21`.
 - Alias SSH administrativo obligatorio: `ssh precios` (no conectar como `root@IP`).
 - **Acceso root completo agregado 2026-11-04** para un segundo desarrollador de
@@ -95,6 +95,9 @@ ssh precios 'sshd -T | grep -E "^(permitrootlogin|passwordauthentication|pubkeya
 - `https://descargas.scoutcuts.com/` responde 200 y entrega el portátil de
   Windows únicamente después de validar un `codigo_acceso` activo. El código
   viaja en el cuerpo POST, no en URL, cookies ni almacenamiento del navegador.
+- El vhost de descargas aplica CSP cerrada (`default-src 'none'`, únicamente
+  CSS inline, favicon `data:` y formulario al mismo origen), `frame-ancestors
+  'none'` y Permissions-Policy sin cámara, micrófono ni geolocalización.
 - El ZIP vigente tiene **242443412 bytes** y SHA-256
   `58a12d34f13f55e2a4e8d49212a84c146a583e0d10f47c9cfcf6f39a5ab03a28`.
   nginx lo transmite con `X-Accel-Redirect`; Python no carga sus 231 MiB en RAM.

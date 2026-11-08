@@ -1,5 +1,22 @@
 # Bitácora
 
+## 2026-11-08 · CSP y permisos del navegador cerrados en descargas
+
+La portada de `descargas.scoutcuts.com` no necesita JavaScript, conexiones
+externas, cámara, micrófono ni geolocalización. Se añadió una CSP específica
+que niega todo por defecto, permite únicamente el CSS inline y el favicon
+`data:` existentes, limita el formulario al mismo origen, prohíbe `<base>` y
+evita que terceros enmarquen el formulario. Permissions-Policy niega además
+los tres permisos del dispositivo. Las cabeceras se repiten deliberadamente
+en la entrega interna del ZIP porque nginx deja de heredar las cabeceras del
+`server` cuando un `location` define sus propios `add_header`.
+
+Se instaló con respaldo previo de la configuración; `nginx -t` pasó antes de
+recargar. Verificación externa: portada y formulario 200, código inválido 401,
+ruta interna directa 404, y las dos cabeceras nuevas presentes con los valores
+esperados. La copia de configuración en
+`/opt/cortador-control/integrado/despliegue/` quedó sincronizada.
+
 ## 2026-11-06 · Almacén de usuarios aislado de nginx
 
 Al cerrar el pendiente de fijar `SCOUTCUTS_USUARIOS` explícitamente se detectó
