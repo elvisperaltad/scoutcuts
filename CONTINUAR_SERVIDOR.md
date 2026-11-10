@@ -1,9 +1,9 @@
 # Continuación del servidor ScoutCuts
 
-Documento de relevo para otro Claude/agente. Estado actualizado el 2026-11-06
-en el servidor, tras desplegar y probar la API, la zona de entrenamiento,
-la descarga protegida del instalador, la purga de privacidad y el respaldo
-automático de modelos QA.
+Documento de relevo para otro Claude/agente. Estado actualizado el 2026-11-10
+en el servidor, tras desplegar y probar la API, la zona de entrenamiento
+(ahora pública por enlace, sin token), la descarga protegida del instalador,
+la purga de privacidad y el respaldo automático de modelos QA.
 
 ## Regla principal
 
@@ -121,6 +121,10 @@ Antes de recargar: `ssh precios 'nginx -t && systemctl reload nginx'`.
   `SCOUTCUTS_USUARIOS` (`/opt/cortador-control/datos/usuarios`, fijada
   explícitamente el 2026-11-06),
   `SCOUTCUTS_ENTREGA_NGINX=1`.
+- `SCOUTCUTS_TOKEN_ENTRENAMIENTO` fue **eliminado del archivo el 2026-11-10**
+  (con respaldo previo de `app.env`) al abrir la zona de entrenamiento como
+  página pública. `SCOUTCUTS_TOKEN_QA` quedó intacto: sigue siendo el token
+  de producción.
 - Nunca leer, copiar, imprimir o incluir el valor de ninguna variable de este
   archivo en documentación, logs, comandos enviados al chat o repositorio.
 
@@ -199,13 +203,16 @@ nueva, todo video queda `pendiente_revision` sin importar que el resto
 funcione. Cópialos a mano a `<release>/perfiles/` (propiedad `root:cortador`,
 `640`) o automatiza esa copia en una variante futura de `desplegar.sh`.
 
-## Pruebas (estado real, verificado el 2026-11-03)
+## Pruebas (estado real)
 
-- Local (Windows, `.venv`): **189 passed**, incluye el E2E real con
+- Local (Windows, `.venv`), 2026-11-10: **337 passed, 2 skipped**, 1 warning
+  de deprecación de una dependencia externa. Enfocadas en la zona de
+  entrenamiento: **38 passed**.
+- Local (Windows, `.venv`), 2026-11-03: **189 passed**, incluye el E2E real con
   `Video/carlos/VIDEO-2026-09-08-18-36-39.mov`.
-- Servidor (venv temporal de verificación, Linux): **172 passed, 17 skipped**
-  (saltos legítimos: sin torch, sin fixtures de video real en ese venv
-  temporal — no son fallos de la API).
+- Servidor (venv temporal de verificación, Linux), 2026-11-03: **172 passed,
+  17 skipped** (saltos legítimos: sin torch, sin fixtures de video real en ese
+  venv temporal — no son fallos de la API).
 - E2E manual contra producción real (`https://api.scoutcuts.com`): subida con
   token -> `en_cola` -> `listo` -> descarga con `Content-Length` correcto,
   MP4 válido, `entrada.mp4` borrado tras la descarga.
@@ -409,14 +416,40 @@ funcione. Cópialos a mano a `<release>/perfiles/` (propiedad `root:cortador`,
    disciplina -- cada una con su propio dataset/modelo en disco, nunca
    compartido entre si ni con el de produccion real de defensa.
 
-   Aislamiento total de produccion real, por diseno (preferencia explicita
-   del usuario de separar sandbox de integracion real): token propio
-   `SCOUTCUTS_TOKEN_ENTRENAMIENTO` (nunca el `SCOUTCUTS_TOKEN_QA` de
-   produccion -- probado que uno no abre al otro), carpeta propia
-   `SCOUTCUTS_ENTRENAMIENTO` (default `datos/entrenamiento_qa`, nunca
-   `datos/trabajos`), y dataset/modelo propios POR DISCIPLINA dentro de esa
-   carpeta (nunca `modelos/dataset_defensa.json` de produccion -- mezclarlos
-   contaminaria el modelo real con practicas de QA). Modulo
+   **PAGINA PUBLICA, sin token ni login (cambio del 2026-11-10, pedido
+   explicito del usuario: "que la zona de entrenamiento sea una pagina
+   publica y sencilla que cualquier QA pueda usar solo con el enlace"),
+   DESPLEGADA Y VERIFICADA EN VIVO el 2026-11-10 (release activa
+   `/opt/cortador-control/releases-app/20261110153310`).** El
+   QA entra escribiendo `scoutcuts.com/entrenamiento/` y ya esta dentro: no
+   hay codigo que pedir al desarrollador, el frontend no guarda ni manda
+   ninguna credencial, y los endpoints `/v1/entrenamiento/*` se registran
+   SIEMPRE (ya no dependen de ninguna variable de entorno).
+   `SCOUTCUTS_TOKEN_ENTRENAMIENTO` ya no existe en ninguna parte del codigo.
+
+   Aislamiento de produccion real por CARPETA, no por credencial (sigue
+   siendo total, es lo que no se podia perder al abrir la zona): carpeta
+   propia `SCOUTCUTS_ENTRENAMIENTO` (default `datos/entrenamiento_qa`, nunca
+   `datos/trabajos`), dataset/modelo propios POR DISCIPLINA dentro de esa
+   carpeta (nunca `modelos/dataset_defensa.json` de produccion --
+   mezclarlos contaminaria el modelo real con practicas de QA), cerrojo de
+   subida propio (una practica nunca bloquea la subida de un cliente real),
+   y nunca toca el `Almacen`/`Cola` de clientes. Lo unico que sale de estos
+   endpoints son cuentas de ejemplos y nombres de categoria: ni un dato de
+   un cliente. La autenticacion de produccion, PWA y descargas quedo
+   intacta, probado: `POST /v1/trabajos` sin token sigue siendo 401.
+
+   Lo que frena el abuso ahora que no hay credencial: limite por archivo
+   (500 MB, `limite_bytes`), **presupuesto total de video sin entrenar en la
+   zona (3 GiB, `limite_total_bytes` -> 503 con mensaje claro)** comprobado
+   en el middleware ANTES de leer el cuerpo de la peticion, un cerrojo de
+   una subida de practica a la vez (503, el mismo que ya conoce la PWA),
+   borrado del video al entrenar, purga de huerfanos a las 24h, y los
+   limites por IP de nginx (`subidas_por_ip` 6r/m + `limit_conn 2`, que
+   cubren la ruta parametrizada `~ ^/v1/entrenamiento/[^/]+/videos$` -- esa
+   regex es necesaria, un `location =` no haria match con la disciplina en
+   medio). Esos limites de nginx pasaron de "extra" a freno principal: no
+   quitarlos. Modulo
    `src/cortador/servidor/entrenamiento.py` (`ZonaEntrenamiento`): sube
    (con la disciplina fijada desde la subida, nunca desde el manifiesto),
    valida, entrena con UNA repeticion a la vez (a diferencia del manifiesto
@@ -427,38 +460,85 @@ funcione. Cópialos a mano a `<release>/perfiles/` (propiedad `root:cortador`,
    `GET /v1/entrenamiento/disciplinas`, `GET /v1/entrenamiento/modelo`,
    `GET /v1/entrenamiento/modelo/{disciplina}`,
    `POST /v1/entrenamiento/{disciplina}/videos`,
-   `POST /v1/entrenamiento/videos/{id}/entrenar` -- solo se registran si
-   `SCOUTCUTS_TOKEN_ENTRENAMIENTO` esta configurado; sin el, estas rutas no
-   existen (404), la produccion real queda exactamente igual. Frontend
-   `web/entrenamiento/` (HTML/JS vanilla, mismo estilo que la PWA): login
-   por codigo, selector de disciplina (categorias dinamicas segun la
-   elegida, nunca hardcodeadas en el frontend), reproductor de video con
-   botones "marcar inicio"/"marcar tiro", categoria, lista de jugadas
-   marcadas, boton de entrenar, y tarjeta de feedback en lenguaje simple
-   ("el modelo coincidio" / "el modelo creyo que era X, ya aprendio de tu
-   correccion") -- nunca JSON crudo, nunca confianza numerica sin traducir.
+   `POST /v1/entrenamiento/videos/{id}/entrenar` -- todas publicas y
+   siempre registradas. `GET /v1/entrenamiento/disciplinas` tambien devuelve
+   `limite_bytes` y `extensiones` para que la pagina explique el limite y
+   los formatos reales sin repetirlos a mano (`.mp4`, `.mov`, `.m4v`,
+   `.avi`: las mismas del motor, `app._EXTENSIONES_VIDEO`).
+
+   Frontend `web/entrenamiento/` (HTML/JS vanilla, mismo estilo que la PWA),
+   **rehecho el 2026-11-10 para un QA novato** porque el anterior daba
+   problemas al subir y al elegir categoria: una sola pantalla con 5 pasos
+   numerados en orden (1 elegir disciplina, 2 subir video, 3 marcar una
+   repeticion, 4 entrenar, 5 resultado), sin pantalla de login. Lenguaje
+   generico: "marcar inicio"/"marcar final", "repeticion" -- nunca "tiro",
+   que solo aplica a algunas disciplinas (el campo del contrato HTTP sigue
+   llamandose `tiro`, igual que el manifiesto del motor; solo cambio lo que
+   lee el QA). Categorias en botones grandes de 60px con borde y tilde en el
+   seleccionado, visibles siempre (ya no se ocultan al subir). Subida por
+   XHR con barra de progreso real, bloqueo contra doble subida, validacion
+   local de extension/tamano con el mismo criterio del servidor, y mensaje
+   explicito de exito o de error (incluido el 503 de zona llena). La
+   disciplina elegida se recuerda en `localStorage`; **credenciales, nunca**.
+   Cambiar de disciplina con un video ya subido pide confirmacion y limpia
+   el marcado; lista de disciplinas vacia o caida muestra un error con boton
+   de reintentar en vez de romperse. Los object URL del reproductor se
+   revocan al reemplazar el video, al terminar y en `pagehide` (sin esto,
+   varios videos seguidos dejaban el archivo entero retenido en memoria del
+   celular). Feedback en lenguaje simple ("el modelo coincidio" / "el modelo
+   creyo que era X, ya aprendio de tu correccion") -- nunca JSON crudo,
+   nunca confianza numerica sin traducir.
+
    `nginx-scoutcuts.conf` reenvia `/v1/entrenamiento/*` al mismo backend
-   bajo el mismo origen que `scoutcuts.com`; `desplegar.sh` genera
-   `SCOUTCUTS_TOKEN_ENTRENAMIENTO` la primera vez (igual que el token QA) y
-   crea `$DATOS/entrenamiento_qa`.
+   bajo el mismo origen que `scoutcuts.com`; `desplegar.sh` solo fija
+   `SCOUTCUTS_ENTRENAMIENTO` y crea `$DATOS/entrenamiento_qa` (ya no genera
+   ningun token de entrenamiento). En produccion la linea
+   `SCOUTCUTS_TOKEN_ENTRENAMIENTO` ya se borro de `app.env` el 2026-11-10 con
+   respaldo previo; si aparece en otro `.env` viejo, la API la ignora y se
+   puede borrar a mano.
 
-   28 pruebas entre `tests/test_defensa_ml.py`,
+   Pruebas entre `tests/test_defensa_ml.py`,
    `tests/servidor/test_entrenamiento.py` y
-   `tests/servidor/test_api_entrenamiento.py` (incluye aislamiento entre
-   disciplinas: entrenar bateo nunca toca el dataset de defensa, ni al
-   reves), mas 2 en `tests/test_defensa.py` para la integracion con el
-   comando CLI. Suite completa: 320 pasan, 2 skip.
+   `tests/servidor/test_api_entrenamiento.py`: el E2E subir -> marcar ->
+   entrenar -> feedback -> borrado SIN una sola cabecera `Authorization`, que
+   las rutas existen sin configurar nada, que mandar el token de produccion
+   da exactamente la misma respuesta que no mandarlo, que produccion sigue
+   dando 401, el aislamiento entre disciplinas (entrenar bateo nunca toca el
+   dataset de defensa, ni al reves), que un video de practica nunca aparece
+   como trabajo de cliente, el 503 de zona llena y que el presupuesto de la
+   zona se libera al borrarse el video. Mas 2 en `tests/test_defensa.py`
+   para la integracion con el comando CLI.
 
-   **DESPLEGADO Y VERIFICADO EN VIVO dos veces (2026-11-04 noche: zona
-   solo-defensa; 2026-11-05 madrugada: extension a bateo/pitcheo/catcher).**
-   Release activa tras la segunda extension. Probado desde fuera contra el
-   dominio real, no solo localhost: `scoutcuts.com/entrenamiento/` responde
-   200 con el HTML/JS nuevos (selector de disciplina incluido);
+   **Despliegue de la apertura publica verificado en vivo (2026-11-10).**
+   Release activa `/opt/cortador-control/releases-app/20261110153310`;
+   `SCOUTCUTS_TOKEN_ENTRENAMIENTO` borrado de `app.env` con respaldo previo y
+   `SCOUTCUTS_TOKEN_QA` intacto; `scoutcuts.service` y nginx activos, `/salud`
+   200. `despliegue/verificar-despliegue.sh` paso completo: sitio 200,
+   `POST /v1/trabajos` sin token 401, E2E de produccion creo y borro su sonda,
+   los tres timers activos, `/entrenamiento/` 200, y
+   `GET /v1/entrenamiento/disciplinas` + `/v1/entrenamiento/modelo` **200 sin
+   cabecera `Authorization`** (antes 401) con las 4 disciplinas.
+
+   E2E real de la zona publica sin ninguna credencial: se subio
+   `fixtures/jornada_sintetica.mp4` como **bateo**, se entreno 1 repeticion
+   valida, el servidor devolvio 1 ejemplo con su feedback, y reintentar
+   entrenar dio 404 porque el video ya estaba borrado -- el borrado al
+   entrenar funciona en produccion. Despues se restauro exactamente el arbol
+   de entrenamiento previo, que estaba vacio: quedaron 0 ejemplos y ningun
+   video de prueba. En navegador real: abre directamente sin login, el
+   selector muestra Defensa/Bateo/Pitcheo/Catcher, cambiar a Bateo actualiza
+   las categorias, los botones de categoria responden reflejando
+   `aria-pressed`/seleccion, y no hubo errores JS.
+
+   Historico de los dos despliegues anteriores, cuando la zona todavia pedia
+   token (2026-11-04 noche: zona solo-defensa; 2026-11-05 madrugada:
+   extension a bateo/pitcheo/catcher). Probado desde fuera contra el dominio real, no
+   solo localhost: `scoutcuts.com/entrenamiento/` responde 200 con el
+   HTML/JS (selector de disciplina incluido);
    `GET /v1/entrenamiento/disciplinas` devuelve las 4 disciplinas con sus
-   categorias; `GET /v1/entrenamiento/modelo` sin token da 401; con
-   `SCOUTCUTS_TOKEN_ENTRENAMIENTO` da 200; con el token de PRODUCCION
-   (`SCOUTCUTS_TOKEN_QA`) da 401 -- aislamiento de credenciales confirmado
-   en el servidor real. Flujo completo subir -> marcar -> entrenar ->
+   categorias; en ese momento `GET /v1/entrenamiento/modelo` sin token daba
+   401 y con el token de entrenamiento 200 -- ese esquema de credenciales ya
+   no existe. Flujo completo subir -> marcar -> entrenar ->
    feedback probado con un video sintetico real contra `api.scoutcuts.com`
    subido como **bateo** (no defensa, para probar la generalizacion de
    verdad): respondio con feedback correcto ("aun falta la categoria
@@ -474,10 +554,10 @@ funcione. Cópialos a mano a `<release>/perfiles/` (propiedad `root:cortador`,
    ~180MB de RAM (`systemctl status scoutcuts`, campo Memory) de los 950MB
    totales del VPS -- la preocupacion de que el modelo no cupiera en
    memoria quedo resuelta: hay margen de sobra.
-   Pendiente real que queda: que un QA humano lo use desde su propio
-   telefono/laptop y de feedback -- lo demas ya esta en produccion; y que
-   el cliente valide o corrija las categorias propuestas para pitcheo y
-   catcher.
+
+   Pendiente real que queda: que un QA humano use la pagina desde su propio
+   telefono/laptop y de feedback; y que el cliente valide o corrija las
+   categorias propuestas para pitcheo y catcher.
 8. **Pitcheo y catcher — zona de entrenamiento lista, pero SIN categorias
    validadas por el cliente.** La infraestructura (subida, marcado,
    entrenamiento, feedback, borrado) ya funciona en produccion para estas

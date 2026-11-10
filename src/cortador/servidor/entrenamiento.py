@@ -3,12 +3,19 @@ recibe feedback inmediato del modelo mientras lo entrena -- para cualquiera
 de las disciplinas registradas en `disciplinas.py` (defensa, bateo,
 pitcheo, catcher).
 
-Aislada de la PWA de produccion real: otra carpeta en disco, otro token,
-nunca toca el Almacen/Cola de clientes reales (ver api.py, seccion
-"Zona de entrenamiento QA"). El video de practica se borra automaticamente
-despues de extraer sus caracteristicas para entrenar, igual que ya pasa con
-el video de un cliente real tras entregarlo: una vez que el modelo aprendio
-de el, el video deja de hacer falta.
+Aislada de la PWA de produccion real: otra carpeta en disco, nunca toca el
+Almacen/Cola de clientes reales (ver api.py, seccion "Zona de entrenamiento
+QA"). El video de practica se borra automaticamente despues de extraer sus
+caracteristicas para entrenar, igual que ya pasa con el video de un cliente
+real tras entregarlo: una vez que el modelo aprendio de el, el video deja
+de hacer falta.
+
+La zona es publica (se entra solo con el enlace, sin token ni cuenta: ver
+CONTINUAR_SERVIDOR.md, punto 7), asi que el freno al abuso no puede ser una
+credencial. Lo que la protege es: el limite por archivo (`limite_bytes`),
+el presupuesto total de video sin entrenar en disco
+(`limite_total_bytes`), la limpieza automatica de huerfanos
+(`limpiar_vencidos`) y los limites por IP de nginx.
 """
 
 from __future__ import annotations
@@ -30,6 +37,12 @@ from ..app import _EXTENSIONES_VIDEO
 
 EXTENSIONES_PERMITIDAS = frozenset(_EXTENSIONES_VIDEO)
 LIMITE_BYTES_POR_DEFECTO = 500 * 1024 * 1024
+# Techo de video de practica SIN entrenar acumulado en la zona. Como la zona
+# es publica, sin este presupuesto una sola IP (dentro de lo que nginx le
+# permite: 6 subidas por minuto) podria llenar el disco del VPS antes de que
+# corra la limpieza de huerfanos de 24h. 3 GiB deja sitio de sobra para
+# varios QA marcando a la vez y sigue siendo una fraccion del disco.
+LIMITE_TOTAL_BYTES_POR_DEFECTO = 3 * 1024 * 1024 * 1024
 _LARGO_ID = 32
 
 MENSAJE_SIN_VIDEO = "No subiste ningun video. Elige un video y vuelve a intentarlo."
@@ -37,6 +50,10 @@ MENSAJE_VIDEO_GRANDE = "Ese video pesa demasiado."
 MENSAJE_FORMATO_NO_SOPORTADO = "Ese archivo no es un video que podamos procesar."
 MENSAJE_NO_ENCONTRADO = "No encontramos ese video de practica."
 MENSAJE_YA_ENTRENADO = "Este video de practica ya se uso para entrenar y ya no existe."
+MENSAJE_ZONA_LLENA = (
+    "La zona de entrenamiento esta ocupada con videos de practica sin "
+    "terminar. Espera un momento y vuelve a intentarlo."
+)
 
 
 class VideoDePracticaNoEncontrado(LookupError):
@@ -45,6 +62,10 @@ class VideoDePracticaNoEncontrado(LookupError):
 
 class ArchivoDePracticaNoAceptado(ValueError):
     pass
+
+
+class ZonaDePracticaLlena(RuntimeError):
+    """Hay demasiado video de practica sin entrenar esperando en disco."""
 
 
 class DisciplinaDesconocida(ValueError):
@@ -95,9 +116,11 @@ class ZonaEntrenamiento:
 
     def __init__(self, raiz: str | Path, *,
                 limite_bytes: int = LIMITE_BYTES_POR_DEFECTO,
+                limite_total_bytes: int = LIMITE_TOTAL_BYTES_POR_DEFECTO,
                 carpeta_modelos: str | Path | None = None) -> None:
         self.raiz = Path(raiz)
         self.limite_bytes = int(limite_bytes)
+        self.limite_total_bytes = int(limite_total_bytes)
         self.carpeta_modelos = Path(carpeta_modelos) if carpeta_modelos else self.raiz / "modelos"
         self._cerrojo = threading.Lock()
 
@@ -133,6 +156,30 @@ class ZonaEntrenamiento:
             raise DisciplinaDesconocida(f"Disciplina desconocida: {disciplina}")
         return disciplina
 
+    def bytes_pendientes(self) -> int:
+        """Cuanto video de practica sin entrenar hay ahora mismo en disco."""
+        carpeta = self._carpeta_videos
+        if not carpeta.is_dir():
+            return 0
+        total = 0
+        for ruta in carpeta.rglob("*"):
+            try:
+                if ruta.is_file():
+                    total += ruta.stat().st_size
+            except OSError:
+                # Una carpeta que la limpieza o un entrenamiento acaba de
+                # borrar mientras recorriamos: no cuenta y no es un error.
+                continue
+        return total
+
+    def hay_espacio(self) -> bool:
+        """Si cabe otra subida dentro del presupuesto total de la zona.
+
+        Se consulta antes de leer el cuerpo de la peticion (ver api.py) para
+        que una zona llena rechace la subida sin recibir medio giga primero.
+        """
+        return self.bytes_pendientes() < self.limite_total_bytes
+
     def subir(self, disciplina: str, nombre_archivo: str, flujo: BinaryIO, *,
               trozo: int = 1024 * 1024) -> VideoDePractica:
         """Guarda un video de practica nuevo para una disciplina; nunca lo
@@ -142,6 +189,10 @@ class ZonaEntrenamiento:
         extension = Path(nombre).suffix.lower()
         if extension not in EXTENSIONES_PERMITIDAS:
             raise ArchivoDePracticaNoAceptado(MENSAJE_FORMATO_NO_SOPORTADO)
+        # Despues de las validaciones baratas y deterministas: si el archivo
+        # no servia, el QA merece oir eso y no un "vuelve mas tarde".
+        if not self.hay_espacio():
+            raise ZonaDePracticaLlena(MENSAJE_ZONA_LLENA)
         video = VideoDePractica(id=uuid.uuid4().hex, nombre=nombre, extension=extension,
                                 disciplina=disciplina)
         carpeta = self._carpeta(video.id)

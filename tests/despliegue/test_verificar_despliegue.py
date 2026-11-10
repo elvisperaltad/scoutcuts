@@ -66,8 +66,8 @@ class _ApiFalsa(http.server.BaseHTTPRequestHandler):
     como la API real en lo que el script necesita para avanzar: 401 al
     POST sin token, 201 con `ID_SONDA` al POST autenticado, estado
     `pendiente_revision` al GET de esa sonda, 204 al DELETE de esa sonda,
-    401 en la zona de entrenamiento incluso con el token de produccion
-    (ver mas abajo) y 404 opaco para cualquier otro id.
+    200 en la zona de entrenamiento con o sin token (es publica, ver mas
+    abajo) y 404 opaco para cualquier otro id.
 
     Hace tambien de sitio (nginx): responde 200 a `/` y
     `/entrenamiento/`, las dos paginas que el script pide por $SITIO. Son
@@ -122,14 +122,16 @@ class _ApiFalsa(http.server.BaseHTTPRequestHandler):
             self._responder(200, {"estado": "ok"})
         elif ruta == "/v1/entrenamiento/disciplinas":
             # Antes que el chequeo de auth generico: la zona de
-            # entrenamiento QA usa credenciales propias
-            # (SCOUTCUTS_TOKEN_ENTRENAMIENTO), asi que la API real
-            # responde 401 aqui tanto sin header como con el token de
-            # produccion -- nunca 404, que es lo que devolveria un
-            # servidor sin la zona montada. El script exige justo esos dos
-            # 401 porque son la prueba de que las credenciales siguen
-            # aisladas; devolver 404 aqui le sumaba fallos en silencio.
-            self._responder(401, {"detail": "Falta el token."})
+            # entrenamiento es PUBLICA, asi que la API real responde 200
+            # aqui tanto sin cabecera como con el token de produccion. El
+            # script exige justo esos 200 (y las 4 disciplinas) porque son
+            # la prueba de que el QA entra solo con el enlace.
+            self._responder(200, {"disciplinas": [
+                {"id": d, "nombre": d, "categorias": []}
+                for d in ("defensa", "bateo", "pitcheo", "catcher")
+            ]})
+        elif ruta == "/v1/entrenamiento/modelo":
+            self._responder(200, {})
         elif not self._autenticado():
             self._responder(401, {"detail": "Falta el token."})
         elif ruta == f"/v1/trabajos/{ID_SONDA}":
@@ -220,7 +222,7 @@ def test_el_script_manda_el_token_real_no_el_literal_asteriscos(tmp_path):
         # normal en la de despliegue), heredarlo mandaria la credencial de
         # verdad al servidor falso de localhost. Se borran todas y despues se
         # fijan solo las de prueba, asi el script no puede leer otra cosa.
-        for variable in ("TOKEN", "TOKEN_ENTRENAMIENTO", "API", "SITIO"):
+        for variable in ("TOKEN", "API", "SITIO"):
             entorno.pop(variable, None)
         entorno["API"] = f"http://127.0.0.1:{puerto}"
         entorno["SITIO"] = f"http://127.0.0.1:{puerto}"

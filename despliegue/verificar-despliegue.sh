@@ -190,35 +190,35 @@ if command -v systemctl >/dev/null 2>&1; then
 fi
 
 echo
-echo "== Zona de entrenamiento QA ($SITIO/entrenamiento) =="
-esperar "pagina de entrenamiento"        "200" "$(code "$SITIO/entrenamiento/")"
-esperar "entrenamiento sin token"        "401" "$(code "$API/v1/entrenamiento/disciplinas")"
-esperar "entrenamiento con token QA (produccion, debe rechazar)" "401" \
+echo "== Zona de entrenamiento publica ($SITIO/entrenamiento) =="
+# La zona se abre solo con el enlace: lo que hay que comprobar ya no es un
+# 401 sino justo lo contrario, que responde SIN ninguna credencial.
+esperar "pagina de entrenamiento"         "200" "$(code "$SITIO/entrenamiento/")"
+esperar "disciplinas sin Authorization"   "200" "$(code "$API/v1/entrenamiento/disciplinas")"
+esperar "estado del modelo sin Authorization" "200" "$(code "$API/v1/entrenamiento/modelo")"
+# Mandar el token de produccion no cambia nada aqui (no abre ni cierra):
+# sigue siendo 200, igual que sin cabecera.
+esperar "disciplinas con el token de produccion (irrelevante)" "200" \
   "$(code -H "Authorization: Bearer ${TOKEN:-}" "$API/v1/entrenamiento/disciplinas")"
 
-if [ -z "${TOKEN_ENTRENAMIENTO:-}" ]; then
-  echo
-  echo "TOKEN_ENTRENAMIENTO no definido: omito las pruebas autenticadas de la zona de entrenamiento."
-  echo "(no es TOKEN: son credenciales distintas y deliberadamente aisladas, ver CONTINUAR_SERVIDOR.md)"
-else
-  RESP_DISC=$(curl -s -H "Authorization: Bearer $TOKEN_ENTRENAMIENTO" "$API/v1/entrenamiento/disciplinas")
-  N_DISC=$(printf '%s' "$RESP_DISC" | json 'import sys,json
+RESP_DISC=$(curl -s "$API/v1/entrenamiento/disciplinas")
+N_DISC=$(printf '%s' "$RESP_DISC" | json 'import sys,json
 try:
     print(len(json.load(sys.stdin).get("disciplinas", [])))
 except Exception:
     print(0)')
-  # Sin interprete el parseo sale vacio; aqui eso vale 0, asi la comparacion
-  # numerica de abajo no recibe una cadena vacia.
-  N_DISC=${N_DISC:-0}
-  if [ "${N_DISC:-0}" -ge 4 ]; then
-    echo "  OK   disciplinas registradas con token valido     -> $N_DISC"
-  else
-    echo "  FAIL disciplinas registradas con token valido     -> $N_DISC (se esperaban al menos 4)"
-    FALLOS=$((FALLOS + 1))
-  fi
-  esperar "entrenamiento con token de produccion (debe rechazar)" "401" \
-    "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer ${TOKEN:-}" "$API/v1/entrenamiento/disciplinas")"
+# Sin interprete el parseo sale vacio; aqui eso vale 0, asi la comparacion
+# numerica de abajo no recibe una cadena vacia.
+N_DISC=${N_DISC:-0}
+if [ "${N_DISC:-0}" -ge 4 ]; then
+  echo "  OK   disciplinas registradas                     -> $N_DISC"
+else
+  echo "  FAIL disciplinas registradas                     -> $N_DISC (se esperaban al menos 4)"
+  FALLOS=$((FALLOS + 1))
 fi
+# Que la produccion NO se haya abierto al abrir la zona ya lo comprueba el
+# bloque "Sitio y API, sin autenticar" de arriba: POST /v1/trabajos sin
+# token sigue siendo 401.
 
 echo
 if [ "$FALLOS" -eq 0 ]; then

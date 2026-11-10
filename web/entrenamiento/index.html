@@ -19,6 +19,9 @@
     --borde: #334155;
   }
   * { box-sizing: border-box; }
+  /* Varias reglas de abajo fijan `display` (flex, grid); sin esto el
+     atributo `hidden` que usa app.js para ocultar pasos no tendria efecto. */
+  [hidden] { display: none !important; }
   body {
     margin: 0;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -27,12 +30,10 @@
     min-height: 100vh;
     padding-bottom: env(safe-area-inset-bottom);
   }
-  .pantalla { display: none; min-height: 100vh; flex-direction: column; }
-  .pantalla.activa { display: flex; }
   header { padding: 20px 20px 10px; text-align: center; }
   header h1 { font-size: 20px; margin: 0; letter-spacing: 0.5px; }
-  header p { color: var(--texto-tenue); font-size: 13px; margin: 4px 0 0; }
-  main { flex: 1; padding: 16px; max-width: 560px; width: 100%; margin: 0 auto; }
+  header p { color: var(--texto-tenue); font-size: 13px; margin: 6px 0 0; }
+  main { padding: 16px; max-width: 560px; width: 100%; margin: 0 auto; }
   .tarjeta {
     background: var(--tarjeta);
     border: 1px solid var(--borde);
@@ -40,8 +41,28 @@
     padding: 20px;
     margin-bottom: 16px;
   }
-  label { display: block; font-size: 13px; color: var(--texto-tenue); margin-bottom: 6px; }
-  input[type="text"], input[type="password"] {
+  .paso {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 0 14px;
+    font-size: 16px;
+  }
+  .paso .numero {
+    flex: 0 0 28px;
+    height: 28px;
+    border-radius: 99px;
+    background: var(--borde);
+    color: var(--texto);
+    font-size: 14px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .ayuda { color: var(--texto-tenue); font-size: 13px; line-height: 1.5; margin: 0 0 14px; }
+  label { display: block; font-size: 14px; color: var(--texto-tenue); margin-bottom: 8px; }
+  select {
     width: 100%;
     padding: 14px;
     font-size: 16px;
@@ -49,179 +70,212 @@
     border: 1px solid var(--borde);
     background: #0b1220;
     color: var(--texto);
-    margin-bottom: 14px;
   }
-  input:focus { outline: 2px solid var(--acento); border-color: var(--acento); }
+  select:focus, button:focus-visible { outline: 2px solid var(--acento); }
   button {
     width: 100%;
-    padding: 14px;
-    font-size: 15px;
+    padding: 15px;
+    font-size: 16px;
     font-weight: 600;
     border-radius: 10px;
     border: none;
     background: var(--acento);
     color: #04210f;
     cursor: pointer;
+    min-height: 48px;
   }
   button:active { background: var(--acento-oscuro); }
-  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
   button.secundario { background: transparent; border: 1px solid var(--borde); color: var(--texto); }
-  button.chico { width: auto; padding: 10px 14px; font-size: 13px; }
-  .fila { display: flex; gap: 8px; }
+  button.secundario:active { background: #0b1220; }
+  .fila { display: flex; gap: 10px; margin-bottom: 14px; }
   .fila button { flex: 1; }
-  .error { color: var(--peligro); font-size: 14px; margin: -4px 0 14px; min-height: 18px; }
+  .error { color: var(--peligro); font-size: 14px; margin: 10px 0 0; }
+  .aviso { color: var(--acento); font-size: 14px; margin: 10px 0 0; }
+  .error:empty, .aviso:empty { display: none; }
   .zona-subida {
     border: 2px dashed var(--borde);
     border-radius: 14px;
-    padding: 28px 16px;
+    padding: 26px 16px;
     text-align: center;
     color: var(--texto-tenue);
-    margin-bottom: 14px;
+    font-size: 15px;
     cursor: pointer;
   }
   .zona-subida.sobre-archivo { border-color: var(--acento); color: var(--texto); }
+  .zona-subida.ocupada { cursor: progress; }
   input[type="file"] { display: none; }
+  .barra {
+    height: 10px;
+    border-radius: 99px;
+    background: #0b1220;
+    border: 1px solid var(--borde);
+    overflow: hidden;
+    margin-top: 12px;
+  }
+  .barra > div { height: 100%; width: 0%; background: var(--acento); transition: width 0.15s linear; }
   video {
     width: 100%;
     border-radius: 10px;
     background: #000;
-    margin-bottom: 10px;
+    margin-bottom: 12px;
     max-height: 60vh;
   }
-  .tiempo-marcado {
+  .marcas { display: flex; gap: 10px; margin-bottom: 12px; }
+  .marca {
+    flex: 1;
+    border: 1px solid var(--borde);
+    border-radius: 10px;
+    padding: 10px;
+    text-align: center;
     font-size: 13px;
     color: var(--texto-tenue);
-    text-align: center;
-    margin-bottom: 10px;
   }
-  .tiempo-marcado b { color: var(--texto); }
-  .categorias { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+  .marca.puesta { border-color: var(--acento); }
+  .marca b { display: block; font-size: 17px; color: var(--texto); margin-top: 4px; }
+  .categorias { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
   .categorias button {
-    flex: 1 1 auto;
-    min-width: 80px;
-    background: transparent;
-    border: 1px solid var(--borde);
+    background: #0b1220;
+    border: 2px solid var(--borde);
     color: var(--texto);
-    font-size: 13px;
-    padding: 12px 4px;
+    font-size: 16px;
+    padding: 18px 10px;
+    min-height: 60px;
   }
-  .categorias button.elegida { background: var(--acento); color: #04210f; border-color: var(--acento); }
-  ul#lista-jugadas { list-style: none; padding: 0; margin: 0 0 14px; }
-  ul#lista-jugadas li {
+  .categorias button.elegida {
+    background: var(--acento);
+    color: #04210f;
+    border-color: var(--acento);
+  }
+  .categorias button.elegida::after { content: " ✓"; }
+  ul#lista-repeticiones { list-style: none; padding: 0; margin: 0; }
+  ul#lista-repeticiones li {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 10px 0;
+    gap: 8px;
+    padding: 12px 0;
     border-bottom: 1px solid var(--borde);
-    font-size: 14px;
+    font-size: 15px;
   }
-  ul#lista-jugadas li:last-child { border-bottom: none; }
-  .jugada-quitar { color: var(--peligro); font-size: 13px; background: none; width: auto; padding: 4px 8px; }
-  .vacio { text-align: center; color: var(--texto-tenue); padding: 18px 0; font-size: 13px; }
-  .feedback-jugada {
+  ul#lista-repeticiones li:last-child { border-bottom: none; }
+  .quitar { color: var(--peligro); font-size: 14px; background: none; width: auto; padding: 8px 10px; min-height: 40px; }
+  .vacio { color: var(--texto-tenue); padding: 14px 0; font-size: 14px; }
+  .feedback-repeticion {
     border: 1px solid var(--borde);
     border-radius: 10px;
-    padding: 12px;
+    padding: 14px;
     margin-bottom: 10px;
-    font-size: 14px;
+    font-size: 15px;
   }
-  .feedback-jugada.acierto { border-color: var(--acento); }
-  .feedback-jugada.diferente { border-color: var(--advertencia); }
-  .feedback-jugada .titulo { font-weight: 600; margin-bottom: 4px; }
-  .feedback-jugada .detalle { color: var(--texto-tenue); font-size: 13px; }
-  .resumen-modelo { font-size: 13px; color: var(--texto-tenue); line-height: 1.6; }
+  .feedback-repeticion.acierto { border-color: var(--acento); }
+  .feedback-repeticion.diferente { border-color: var(--advertencia); }
+  .feedback-repeticion .titulo { font-weight: 600; margin-bottom: 4px; }
+  .feedback-repeticion .detalle { color: var(--texto-tenue); font-size: 14px; }
+  .resumen-modelo { font-size: 14px; color: var(--texto-tenue); line-height: 1.7; }
   .resumen-modelo b { color: var(--texto); }
   .pastilla-categoria {
     display: inline-block;
-    font-size: 11px;
-    padding: 2px 8px;
+    font-size: 12px;
+    padding: 3px 9px;
     border-radius: 99px;
     background: #334155;
-    margin: 2px 4px 2px 0;
+    margin: 3px 4px 3px 0;
   }
   .pastilla-categoria.cubierta { background: var(--acento); color: #04210f; }
-  footer { text-align: center; padding: 16px; color: var(--texto-tenue); font-size: 12px; }
-  #salir-entrenamiento { width: auto; padding: 8px 14px; font-size: 13px; }
-  .cabecera-app { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+  footer { text-align: center; padding: 20px 16px 28px; color: var(--texto-tenue); font-size: 12px; line-height: 1.6; }
 </style>
 </head>
 <body>
 
-<section id="pantalla-login" class="pantalla activa">
-  <header>
-    <h1>Entrenamiento de ScoutCuts</h1>
-    <p>Zona de práctica para el QA — separada de los videos de clientes reales</p>
-  </header>
-  <main>
-    <div class="tarjeta">
-      <label for="codigo-entrenamiento">Código de acceso de entrenamiento</label>
-      <input id="codigo-entrenamiento" type="password" autocomplete="off" placeholder="Pídelo al desarrollador">
-      <div class="error" id="error-login"></div>
-      <button id="btn-entrar">Entrar</button>
+<header>
+  <h1>Entrenamiento de ScoutCuts</h1>
+  <p>Zona de práctica abierta. No hace falta usuario ni contraseña: sigue los pasos de arriba abajo.</p>
+</header>
+
+<main>
+
+  <div class="tarjeta">
+    <div class="paso"><span class="numero">1</span> Elige qué vas a entrenar</div>
+    <label for="selector-disciplina">Disciplina</label>
+    <select id="selector-disciplina" disabled>
+      <option>Cargando...</option>
+    </select>
+    <div class="error" id="error-disciplinas"></div>
+    <div class="fila" id="fila-reintentar-disciplinas" hidden style="margin:14px 0 0;">
+      <button class="secundario" id="btn-reintentar-disciplinas">Volver a intentarlo</button>
     </div>
-  </main>
-</section>
+  </div>
 
-<section id="pantalla-app" class="pantalla">
-  <header>
-    <div class="cabecera-app" style="max-width:560px; margin:0 auto;">
-      <h1 style="text-align:left;">Entrenamiento</h1>
-      <button class="secundario" id="salir-entrenamiento">Salir</button>
+  <div class="tarjeta" id="tarjeta-subida">
+    <div class="paso"><span class="numero">2</span> Sube un video de práctica</div>
+    <p class="ayuda" id="ayuda-subida">Formatos aceptados: MP4, MOV, M4V o AVI.</p>
+    <div class="zona-subida" id="zona-subida" role="button" tabindex="0" aria-describedby="ayuda-subida">
+      <div id="texto-zona-subida">Toca aquí para elegir un video</div>
+      <input type="file" id="input-archivo">
     </div>
-  </header>
-  <main>
+    <div class="barra" id="barra-subida" hidden><div id="relleno-subida"></div></div>
+    <div class="error" id="error-subida"></div>
+    <div class="aviso" id="aviso-subida"></div>
+  </div>
 
-    <div class="tarjeta" id="tarjeta-estado-modelo">
-      <h3 style="margin-top:0; font-size:14px;">Lo que ya sabe el modelo</h3>
-      <label for="selector-disciplina">¿Qué vas a entrenar?</label>
-      <select id="selector-disciplina" style="width:100%; padding:14px; font-size:16px; border-radius:10px; border:1px solid var(--borde); background:#0b1220; color:var(--texto); margin-bottom:14px;"></select>
-      <div class="resumen-modelo" id="resumen-modelo">Cargando...</div>
+  <div class="tarjeta" id="tarjeta-marcado" hidden>
+    <div class="paso"><span class="numero">3</span> Marca una repetición</div>
+    <p class="ayuda">
+      Reproduce el video. Cuando empiece la jugada toca <b>Marcar inicio</b>; cuando
+      termine toca <b>Marcar final</b>. Después elige la categoría y agrégala.
+    </p>
+    <video id="video-practica" controls playsinline></video>
+    <div class="fila">
+      <button class="secundario" id="btn-reproducir">Reproducir</button>
+      <button class="secundario" id="btn-retroceder">« 2 s</button>
     </div>
-
-    <div class="tarjeta" id="tarjeta-subida">
-      <h3 style="margin-top:0; font-size:14px;">1. Sube un video de práctica</h3>
-      <div class="zona-subida" id="zona-subida">
-        <div id="texto-zona-subida">Toca para elegir un video</div>
-        <input type="file" id="input-archivo" accept="video/mp4,video/quicktime,video/x-msvideo,.mp4,.mov,.avi">
-      </div>
-      <div class="error" id="error-subida"></div>
+    <div class="marcas">
+      <div class="marca" id="marca-inicio">Inicio <b id="valor-inicio">sin marcar</b></div>
+      <div class="marca" id="marca-final">Final <b id="valor-final">sin marcar</b></div>
     </div>
-
-    <div class="tarjeta" id="tarjeta-marcado" style="display:none;">
-      <h3 style="margin-top:0; font-size:14px;">2. Marca las jugadas</h3>
-      <video id="video-practica" controls></video>
-      <div class="tiempo-marcado" id="texto-tiempos">
-        Inicio: <b id="valor-inicio">sin marcar</b> &nbsp;·&nbsp; Tiro: <b id="valor-tiro">sin marcar</b>
-      </div>
-      <div class="fila" style="margin-bottom:14px;">
-        <button class="secundario" id="btn-marcar-inicio">Marcar inicio</button>
-        <button class="secundario" id="btn-marcar-tiro">Marcar tiro</button>
-      </div>
-      <label>¿Qué categoría es esta jugada?</label>
-      <div class="categorias" id="categorias"></div>
-      <div class="error" id="error-jugada"></div>
-      <button id="btn-agregar-jugada" disabled>Agregar esta jugada</button>
-
-      <h3 style="font-size:14px; margin:20px 0 4px;">Jugadas marcadas en este video</h3>
-      <ul id="lista-jugadas"></ul>
-      <div class="vacio" id="jugadas-vacio">Todavía no marcaste ninguna jugada.</div>
-
-      <button id="btn-entrenar" disabled style="margin-top:10px;">Entrenar al modelo con estas jugadas</button>
-      <p style="text-align:center; color:var(--texto-tenue); font-size:12px; margin-top:10px;">
-        Al entrenar, el video se borra automáticamente. El modelo solo se queda con los números que aprendió, nunca con el video.
-      </p>
+    <div class="fila">
+      <button class="secundario" id="btn-marcar-inicio">Marcar inicio</button>
+      <button class="secundario" id="btn-marcar-final">Marcar final</button>
     </div>
+    <label id="rotulo-categorias">Elige la categoría de esta repetición</label>
+    <div class="categorias" id="categorias" role="group" aria-labelledby="rotulo-categorias"></div>
+    <div class="error" id="error-repeticion"></div>
+    <button id="btn-agregar-repeticion" disabled style="margin-top:14px;">
+      Agregar esta repetición
+    </button>
+  </div>
 
-    <div class="tarjeta" id="tarjeta-feedback" style="display:none;">
-      <h3 style="margin-top:0; font-size:14px;">Resultado del entrenamiento</h3>
-      <div id="lista-feedback"></div>
-      <button class="secundario" id="btn-otro-video" style="margin-top:6px;">Subir otro video</button>
-    </div>
+  <div class="tarjeta" id="tarjeta-lista" hidden>
+    <div class="paso"><span class="numero">4</span> Entrena al modelo</div>
+    <ul id="lista-repeticiones"></ul>
+    <div class="vacio" id="repeticiones-vacio">Todavía no agregaste ninguna repetición.</div>
+    <button id="btn-entrenar" disabled style="margin-top:12px;">
+      Entrenar con estas repeticiones
+    </button>
+    <p class="ayuda" style="margin:12px 0 0;">
+      Al entrenar, el video se borra del servidor automáticamente. El modelo solo se
+      queda con los números que aprendió, nunca con el video.
+    </p>
+  </div>
 
-  </main>
-</section>
+  <div class="tarjeta" id="tarjeta-feedback" hidden>
+    <div class="paso"><span class="numero">5</span> Resultado</div>
+    <div id="lista-feedback"></div>
+    <button class="secundario" id="btn-otro-video" style="margin-top:6px;">Subir otro video</button>
+  </div>
 
-<footer>ScoutCuts · Zona de entrenamiento, no usar con videos de clientes</footer>
+  <div class="tarjeta">
+    <div class="paso" style="font-size:15px;">Lo que ya sabe el modelo</div>
+    <div class="resumen-modelo" id="resumen-modelo">Cargando...</div>
+  </div>
+
+</main>
+
+<footer>
+  ScoutCuts · Zona de entrenamiento, separada de los videos de clientes reales.<br>
+  No subas aquí material de un cliente: estos videos son solo de práctica y se borran.
+</footer>
 
 <script src="app.js"></script>
 </body>

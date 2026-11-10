@@ -100,16 +100,14 @@ add_var SCOUTCUTS_PERFILES     "$APP/perfiles"
 # decision visible del despliegue y no un implicito.
 add_var SCOUTCUTS_USUARIOS     "$DATOS/usuarios"
 add_var SCOUTCUTS_ENTREGA_NGINX 1
-# Token de entrenamiento: separado del token QA de produccion a proposito
-# (ver CONTINUAR_SERVIDOR.md, punto 7). Si no se define, la zona
-# /entrenamiento simplemente no registra sus rutas en la API (404), nunca
-# rompe el arranque del servicio.
-if ! grep -q '^SCOUTCUTS_TOKEN_ENTRENAMIENTO=' "$ENVF"; then
-  printf 'SCOUTCUTS_TOKEN_ENTRENAMIENTO=%s\n' "$(python3 -c 'import secrets;print(secrets.token_urlsafe(32))')" >> "$ENVF"
-  echo "    + SCOUTCUTS_TOKEN_ENTRENAMIENTO generada (no se imprime)"
-else
-  echo "    = SCOUTCUTS_TOKEN_ENTRENAMIENTO ya existe (no la toco)"
-fi
+# Carpeta de la zona de entrenamiento (ver CONTINUAR_SERVIDOR.md, punto 7).
+# La zona es PUBLICA: se entra solo con el enlace, sin token ni login, y sus
+# rutas se registran siempre. Lo que la aisla de produccion es esta carpeta
+# (nunca $DATOS/trabajos) y su dataset por disciplina dentro de ella.
+#
+# Ya no existe SCOUTCUTS_TOKEN_ENTRENAMIENTO: la API la ignora. Si un .env
+# viejo todavia la tiene, no estorba, pero se puede borrar a mano -- es un
+# secreto que ya nadie lee.
 add_var SCOUTCUTS_ENTRENAMIENTO "$DATOS/entrenamiento_qa"
 # Carpeta del instalador. La API solo necesita comprobar que el ZIP existe
 # antes de delegar el envio a nginx (X-Accel-Redirect); nunca lo abre.

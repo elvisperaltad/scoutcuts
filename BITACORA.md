@@ -1,5 +1,102 @@
 # Bitácora
 
+## 2026-11-10 · Zona de entrenamiento abierta por enlace y rehecha para QA novato
+
+QA reportó problemas al subir videos y al elegir categorías, y el usuario
+pidió textualmente que "la zona de entrenamiento sea una página pública y
+sencilla que cualquier QA pueda usar solo con el enlace, sin
+token/código/login". El código de acceso era una barrera que había que
+pedirle al desarrollador: en la práctica, lo que conseguía era que la zona
+no se usara.
+
+**Login eliminado de raíz, no escondido.** Desapareció la pantalla de
+código, `app.js` no guarda ni envía ninguna cabecera `Authorization`, y
+`SCOUTCUTS_TOKEN_ENTRENAMIENTO` ya no existe en `Config`, en `desplegar.sh`
+ni en los comentarios. Los endpoints `/v1/entrenamiento/*` se registran
+siempre, sin depender de ninguna variable de entorno. La autenticación de
+producción, PWA y descargas no se tocó.
+
+**Qué sostiene el aislamiento ahora que no hay credencial** (era la parte
+que no se podía perder al abrir la puerta): carpeta propia en disco
+(`SCOUTCUTS_ENTRENAMIENTO`, nunca `datos/trabajos`), dataset y modelo
+propios por disciplina dentro de ella, cerrojo de subida propio para que una
+práctica no bloquee a un cliente real, borrado del video al entrenar, purga
+de huérfanos a las 24h, y nunca toca el `Almacen`/`Cola` de clientes. De
+estos endpoints solo sale el número de ejemplos y el nombre de las
+categorías: ni un dato de un cliente.
+
+**Dos frenos añadidos al abuso, sin reintroducir cuentas ni códigos**, que
+es lo que de verdad cambia al exponer una subida de 500 MB sin credencial:
+un presupuesto total de 3 GiB de video sin entrenar en la zona
+(`limite_total_bytes` → 503 con mensaje claro), comprobado en el middleware
+*antes* de leer el cuerpo de la petición para no recibir medio giga y
+contestar después; y un cerrojo de una subida de práctica a la vez. Los
+límites por IP de nginx no se tocaron, pero pasaron de ser un extra a ser el
+freno principal; se verificó que la ruta parametrizada
+`~ ^/v1/entrenamiento/[^/]+/videos$` sigue cubierta por `limit_req` y
+`limit_conn`.
+
+**Frontend rehecho para alguien que lo usa por primera vez.** Una pantalla
+con cinco pasos numerados en orden (elegir disciplina → subir → marcar →
+entrenar → resultado). Lenguaje genérico: "marcar inicio"/"marcar final" y
+"repetición", nunca "tiro", que solo aplica a algunas disciplinas — el campo
+del contrato HTTP sigue llamándose `tiro` (es el mismo manifiesto del motor:
+cambiarlo habría tocado el modelo de datos, que estaba fuera de alcance);
+solo cambió lo que lee el QA. Los dos problemas reportados, atacados
+directamente: las categorías son botones grandes con borde y tilde en el
+seleccionado y ya no se ocultan al subir; la subida usa XHR con barra de
+progreso real, bloqueo contra doble subida, validación local de extensión y
+tamaño con el mismo criterio del servidor, y un mensaje explícito de éxito o
+de error. Se confirmó contra `app._EXTENSIONES_VIDEO` que el backend ya
+aceptaba `.m4v`, así que la página lo ofrece; de hecho el límite y la lista
+de extensiones los anuncia ahora `GET /v1/entrenamiento/disciplinas`, para
+que la página no se quede desfasada respecto del backend.
+
+Tres cosas más que estaban mal y se arreglaron de paso: los object URL del
+reproductor nunca se revocaban (subir varios videos seguidos retenía cada
+archivo completo en memoria, que en un celular termina en pestaña muerta);
+una lista de disciplinas vacía o una caída de red rompía la página en vez de
+mostrar un error con botón de reintentar; y cambiar de disciplina con un
+video ya subido dejaba las categorías mezcladas, ahora pide confirmación y
+limpia el marcado. Lo único que se recuerda en `localStorage` es la
+disciplina elegida: una preferencia de interfaz, nunca una credencial.
+
+Las pruebas de contrato cambiaron de signo: donde afirmaban 401 ahora
+afirman que la zona responde sin `Authorization`, que las rutas existen sin
+configurar nada, y que mandar el token de producción da exactamente la misma
+respuesta que no mandarlo. Se conservaron el E2E subir→entrenar con video
+real y el aislamiento entre disciplinas, y se añadieron el 503 de zona
+llena, la liberación del presupuesto al borrarse el video, y que producción
+sigue dando 401. `verificar-despliegue.sh` y su servidor falso se
+actualizaron a las expectativas nuevas.
+
+**Desplegado y verificado en producción (2026-11-10).** Release activa:
+`/opt/cortador-control/releases-app/20261110153310`.
+`SCOUTCUTS_TOKEN_ENTRENAMIENTO` se eliminó de `/etc/cortador-control/app.env`
+con respaldo previo del archivo; el `SCOUTCUTS_TOKEN_QA` de producción quedó
+intacto. `scoutcuts.service` y nginx activos, `/salud` 200.
+
+`verificar-despliegue.sh` pasó completo: sitio 200, `POST /v1/trabajos` sin
+token 401, E2E de producción creó y borró su sonda, tres timers activos,
+`/entrenamiento/` 200, y `/v1/entrenamiento/disciplinas` + `/modelo` 200 **sin
+cabecera `Authorization`** (donde antes daban 401), con las 4 disciplinas.
+
+E2E real de la zona pública, sin una sola credencial: se subió
+`fixtures/jornada_sintetica.mp4` como **bateo**, se entrenó 1 repetición
+válida, el servidor respondió con 1 ejemplo y su feedback, y el reintento de
+entrenar dio 404 porque el video ya se había borrado al entrenar — el borrado
+inmediato funciona de verdad. Después se restauró exactamente el árbol de
+entrenamiento previo, que estaba vacío: quedaron 0 ejemplos y ningún video de
+prueba en el servidor.
+
+En navegador real: la página abre directamente sin login, el selector muestra
+Defensa/Bateo/Pitcheo/Catcher, cambiar a Bateo actualiza las categorías, y los
+botones de categoría responden reflejando `aria-pressed`/selección. Sin
+errores JS en consola.
+
+Suite local: **337 passed, 2 skipped**, 1 warning de deprecación de una
+dependencia externa. Pruebas enfocadas de la zona: **38 passed**.
+
 ## 2026-11-08 · CSP y permisos del navegador cerrados en descargas
 
 La portada de `descargas.scoutcuts.com` no necesita JavaScript, conexiones

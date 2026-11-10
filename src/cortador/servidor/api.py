@@ -29,9 +29,12 @@ from .almacen import ArchivoNoAceptado, Almacen, TrabajoDesconocido, Trabajo
 from .. import disciplinas as disciplinas_mod
 from .cola import Cola
 from .entrenamiento import (
+    EXTENSIONES_PERMITIDAS as EXTENSIONES_DE_PRACTICA,
+    MENSAJE_ZONA_LLENA,
     ArchivoDePracticaNoAceptado,
     DisciplinaDesconocida,
     VideoDePracticaNoEncontrado,
+    ZonaDePracticaLlena,
     ZonaEntrenamiento,
 )
 from .usuarios import Usuario, Usuarios
@@ -101,7 +104,6 @@ class Config:
     limite_bytes: int = alm.LIMITE_POR_DEFECTO
     telegram_token: str | None = None
     usuarios_base: Path | None = None
-    token_entrenamiento: str | None = None
     entrenamiento_base: Path | None = None
     max_edad_entrenamiento_horas: float = 24.0
     descargas_base: Path | None = None
@@ -126,7 +128,7 @@ class Config:
 
     @property
     def entrenamiento_raiz(self) -> Path:
-        """Carpeta de la zona de entrenamiento QA: aislada de `raiz` (produccion)."""
+        """Carpeta de la zona de entrenamiento publica: aislada de `raiz` (produccion)."""
         return (
             self.entrenamiento_base if self.entrenamiento_base is not None
             else self.raiz / "entrenamiento_qa"
@@ -167,14 +169,10 @@ class Config:
         # al default razonable `SCOUTCUTS_DATOS/usuarios` (ver usuarios_raiz).
         usuarios_env = entorno.get("SCOUTCUTS_USUARIOS")
         max_edad_revision = entorno.get("SCOUTCUTS_MAX_EDAD_REVISION_HORAS")
-        # Token separado del token QA de produccion: la zona de entrenamiento
-        # (scoutcuts.com/entrenamiento) es un sandbox distinto, nunca debe
-        # compartir credencial con la subida de videos reales de clientes.
-        # Opcional: sin el, los endpoints de entrenamiento simplemente no se
-        # registran (ver crear_app), la API de produccion sigue igual.
-        token_entrenamiento = (
-            entorno.get("SCOUTCUTS_TOKEN_ENTRENAMIENTO") or ""
-        ).strip() or None
+        # Carpeta de la zona de entrenamiento publica
+        # (scoutcuts.com/entrenamiento). Sin la variable cae al default
+        # `SCOUTCUTS_DATOS/entrenamiento_qa` (ver entrenamiento_raiz): nunca
+        # `datos/trabajos`, que es donde viven los videos de clientes reales.
         entrenamiento_env = entorno.get("SCOUTCUTS_ENTRENAMIENTO")
         max_edad_entrenamiento = entorno.get("SCOUTCUTS_MAX_EDAD_ENTRENAMIENTO_HORAS")
         # Carpeta donde el administrador deja el ZIP del instalador. Sin la
@@ -192,13 +190,29 @@ class Config:
             max_edad_revision_horas=(
                 float(max_edad_revision) if max_edad_revision else 168.0
             ),
-            token_entrenamiento=token_entrenamiento,
             entrenamiento_base=Path(entrenamiento_env) if entrenamiento_env else None,
             max_edad_entrenamiento_horas=(
                 float(max_edad_entrenamiento) if max_edad_entrenamiento else 24.0
             ),
             descargas_base=Path(descargas_env) if descargas_env else None,
         )
+
+
+def _es_subida_de_practica(metodo: str, ruta: str) -> bool:
+    """`POST /v1/entrenamiento/{disciplina}/videos` y ninguna otra ruta.
+
+    Se compara por segmentos en vez de con `startswith`: la disciplina es un
+    segmento variable, pero el resto de la zona de entrenamiento (estado del
+    modelo, entrenar) no debe entrar por aqui.
+    """
+    if metodo != "POST":
+        return False
+    partes = ruta.strip("/").split("/")
+    return (
+        len(partes) == 4
+        and partes[0] == "v1" and partes[1] == "entrenamiento"
+        and partes[3] == "videos"
+    )
 
 
 def _cola_por_defecto(config: Config, almacen: Almacen) -> Cola:
@@ -240,17 +254,19 @@ def crear_app(config: Config | None = None, *,
     usuarios = Usuarios(config.usuarios_raiz)
     cerrojo_subida = threading.Lock()
     estado_bot: dict = {"control": None}
-    # Zona de entrenamiento QA: solo se activa con su propio token (separado
-    # del token de produccion). Tiene su propio cerrojo interno, aislado del
-    # de subidas de produccion (nunca compiten por el mismo candado).
-    # Atiende las cuatro disciplinas (defensa, bateo, pitcheo, catcher) con
-    # un dataset/modelo por disciplina DENTRO de entrenamiento_raiz, nunca
-    # los defaults del proyecto (modelos/dataset_defensa.json es el modelo
-    # real que alimenta `cortador defensa`; mezclarlos dejaria que
-    # practicas de QA contaminen el modelo de produccion real).
-    zona_entrenamiento = (
-        ZonaEntrenamiento(config.entrenamiento_raiz) if config.token_entrenamiento else None
-    )
+    # Zona de entrenamiento publica: siempre activa, se entra solo con el
+    # enlace (sin token ni cuenta). Su aislamiento NO depende de una
+    # credencial sino de la carpeta: atiende las cuatro disciplinas (defensa,
+    # bateo, pitcheo, catcher) con un dataset/modelo por disciplina DENTRO de
+    # entrenamiento_raiz, nunca los defaults del proyecto
+    # (modelos/dataset_defensa.json es el modelo real que alimenta
+    # `cortador defensa`; mezclarlos dejaria que practicas de QA contaminen
+    # el modelo de produccion real).
+    zona_entrenamiento = ZonaEntrenamiento(config.entrenamiento_raiz)
+    # Cerrojo propio de la zona, aislado del de subidas de produccion: una
+    # practica de QA nunca debe poder bloquear la subida de un cliente real,
+    # ni al contrario.
+    cerrojo_entrenamiento = threading.Lock()
 
     @asynccontextmanager
     async def _ciclo_de_vida(_app: FastAPI):
@@ -337,7 +353,7 @@ def crear_app(config: Config | None = None, *,
         return usuario
 
     @app.middleware("http")
-    async def _autenticar_antes_de_leer_el_cuerpo(request: Request, call_next):
+    async def _filtrar_subidas_antes_de_leer_el_cuerpo(request: Request, call_next):
         # FastAPI resuelve el UploadFile (y por tanto lee todo el multipart)
         # como parte de los parametros de la ruta, antes de que el Depends
         # de autenticacion se ejecute. Sin este middleware, un cliente sin
@@ -354,6 +370,14 @@ def crear_app(config: Config | None = None, *,
                 requiere_sesion_pwa(request)
             except ErrorHTTP as err:
                 return JSONResponse(status_code=err.estado, content={"mensaje": err.mensaje})
+        # La zona de entrenamiento es publica: aqui no hay credencial que
+        # comprobar, pero si un presupuesto de disco. Mirarlo en el
+        # middleware (antes del enrutado) evita recibir medio giga de video
+        # para despues contestar que la zona esta llena.
+        if _es_subida_de_practica(request.method, request.url.path):
+            if not zona_entrenamiento.hay_espacio():
+                return JSONResponse(
+                    status_code=503, content={"mensaje": MENSAJE_ZONA_LLENA})
         return await call_next(request)
 
     def _buscar(identificador: str) -> Trabajo:
@@ -641,62 +665,73 @@ def crear_app(config: Config | None = None, *,
             "Content-Type": "application/zip",
         })
 
-    # --- Zona de entrenamiento QA (scoutcuts.com/entrenamiento) ---
+    # --- Zona de entrenamiento publica (scoutcuts.com/entrenamiento) ---
     #
-    # Sandbox aislado de la produccion real: otra carpeta en disco
-    # (config.entrenamiento_raiz, nunca config.raiz), otro token
-    # (SCOUTCUTS_TOKEN_ENTRENAMIENTO, nunca SCOUTCUTS_TOKEN_QA), y nunca
-    # toca el Almacen/Cola de clientes reales. Solo se registra si el
-    # administrador configuro el token de entrenamiento; sin el, estas
-    # rutas no existen (404), igual que si nunca se hubiera escrito este
-    # bloque -- la produccion real queda exactamente igual.
+    # PUBLICA A PROPOSITO: se entra solo con el enlace, sin token, codigo ni
+    # login. El QA que entrena el modelo no tiene credenciales que pedir a
+    # nadie; poner una barrera ahi solo conseguia que no se usara. Estas
+    # rutas se registran SIEMPRE, no dependen de ninguna variable de entorno.
+    #
+    # Que esto NO debilita (y por que sigue siendo seguro abrirlo):
+    #   - no toca el Almacen/Cola de clientes reales en ningun punto, ni los
+    #     endpoints de produccion/PWA/descargas, que siguen exigiendo su
+    #     credencial exactamente igual que antes;
+    #   - escribe en otra carpeta del disco (config.entrenamiento_raiz, nunca
+    #     config.raiz) con su propio dataset/modelo por disciplina;
+    #   - solo acepta video, lo borra en cuanto entrena con el, y purga los
+    #     huerfanos pasadas max_edad_entrenamiento_horas;
+    #   - no lee ni devuelve nada de un cliente real: lo unico que sale de
+    #     aqui son cuentas de ejemplos y nombres de categoria;
+    #   - lo que frena el abuso no es una credencial sino el limite por
+    #     archivo, el presupuesto total de la zona, el cerrojo de una subida
+    #     a la vez y los limites por IP de nginx.
     #
     # Atiende las cuatro disciplinas registradas en `disciplinas.py`
     # (defensa, bateo, pitcheo, catcher): la disciplina va en la URL, nunca
     # en el cuerpo, para que quede fijada desde el momento de la subida.
-    if zona_entrenamiento is not None:
-        def requiere_token_entrenamiento(request: Request) -> None:
-            cabecera = request.headers.get("authorization", "")
-            esquema, _, valor = cabecera.partition(" ")
-            if esquema.lower() != "bearer" or not secrets.compare_digest(
-                    valor.strip(), config.token_entrenamiento or ""):
-                raise ErrorHTTP(401, MENSAJE_SIN_TOKEN)
+    @app.get("/v1/entrenamiento/disciplinas")
+    def entrenamiento_disciplinas():
+        return {
+            "disciplinas": [
+                {
+                    "id": disciplina,
+                    "nombre": disciplinas_mod.nombre_disciplina(disciplina),
+                    "categorias": [
+                        {"id": c, "nombre": disciplinas_mod.nombre_categoria(c)}
+                        for c in disciplinas_mod.categorias(disciplina)
+                    ],
+                }
+                for disciplina in disciplinas_mod.DISCIPLINAS
+            ],
+            # Para que la pagina pueda explicarle al QA el limite y los
+            # formatos reales sin repetirlos (ni equivocarse) en el frontend:
+            # si manana se acepta otra extension, la pagina se entera sola.
+            "limite_bytes": zona_entrenamiento.limite_bytes,
+            "extensiones": sorted(EXTENSIONES_DE_PRACTICA),
+        }
 
-        @app.get("/v1/entrenamiento/disciplinas")
-        def entrenamiento_disciplinas(_token: None = Depends(requiere_token_entrenamiento)):
-            return {
-                "disciplinas": [
-                    {
-                        "id": disciplina,
-                        "nombre": disciplinas_mod.nombre_disciplina(disciplina),
-                        "categorias": [
-                            {"id": c, "nombre": disciplinas_mod.nombre_categoria(c)}
-                            for c in disciplinas_mod.categorias(disciplina)
-                        ],
-                    }
-                    for disciplina in disciplinas_mod.DISCIPLINAS
-                ]
-            }
+    @app.get("/v1/entrenamiento/modelo")
+    def entrenamiento_estado():
+        return zona_entrenamiento.estado_todas_las_disciplinas()
 
-        @app.get("/v1/entrenamiento/modelo")
-        def entrenamiento_estado(_token: None = Depends(requiere_token_entrenamiento)):
-            return zona_entrenamiento.estado_todas_las_disciplinas()
+    @app.get("/v1/entrenamiento/modelo/{disciplina}")
+    def entrenamiento_estado_disciplina(disciplina: str):
+        try:
+            return zona_entrenamiento.estado_modelo(disciplina)
+        except DisciplinaDesconocida as err:
+            raise ErrorHTTP(404, str(err))
 
-        @app.get("/v1/entrenamiento/modelo/{disciplina}")
-        def entrenamiento_estado_disciplina(
-            disciplina: str, _token: None = Depends(requiere_token_entrenamiento),
-        ):
-            try:
-                return zona_entrenamiento.estado_modelo(disciplina)
-            except DisciplinaDesconocida as err:
-                raise ErrorHTTP(404, str(err))
-
-        @app.post("/v1/entrenamiento/{disciplina}/videos")
-        def entrenamiento_subir(
-            disciplina: str,
-            archivo: UploadFile | None = File(default=None),
-            _token: None = Depends(requiere_token_entrenamiento),
-        ):
+    @app.post("/v1/entrenamiento/{disciplina}/videos")
+    def entrenamiento_subir(
+        disciplina: str,
+        archivo: UploadFile | None = File(default=None),
+    ):
+        # Una subida de practica a la vez, con su propio cerrojo: sin esto,
+        # una zona publica permitiria a varios clientes escribir medio giga
+        # cada uno en paralelo. El 503 es el mismo que ya conoce la PWA.
+        if not cerrojo_entrenamiento.acquire(blocking=False):
+            raise ErrorHTTP(503, MENSAJE_OTRA_SUBIDA_EN_CURSO)
+        try:
             list(zona_entrenamiento.limpiar_vencidos(config.max_edad_entrenamiento_horas))
             if archivo is None or not archivo.filename:
                 raise ErrorHTTP(400, MENSAJE_SIN_VIDEO)
@@ -704,35 +739,35 @@ def crear_app(config: Config | None = None, *,
                 video = zona_entrenamiento.subir(disciplina, archivo.filename, archivo.file)
             except DisciplinaDesconocida as err:
                 raise ErrorHTTP(404, str(err))
+            except ZonaDePracticaLlena as err:
+                raise ErrorHTTP(503, str(err))
             except ArchivoDePracticaNoAceptado as err:
                 raise ErrorHTTP(415, str(err))
-            return JSONResponse(status_code=201, content={
-                "id": video.id, "nombre": video.nombre, "disciplina": video.disciplina,
-            })
+        finally:
+            cerrojo_entrenamiento.release()
+        return JSONResponse(status_code=201, content={
+            "id": video.id, "nombre": video.nombre, "disciplina": video.disciplina,
+        })
 
-        @app.post("/v1/entrenamiento/videos/{identificador}/entrenar")
-        def entrenamiento_entrenar(
-            identificador: str,
-            cuerpo: dict,
-            _token: None = Depends(requiere_token_entrenamiento),
-        ):
-            try:
-                resultado = zona_entrenamiento.entrenar_con_manifiesto(
-                    identificador,
-                    cuerpo.get("repeticiones"),
-                    str(cuerpo.get("video") or ""),
-                )
-            except VideoDePracticaNoEncontrado as err:
-                raise ErrorHTTP(404, str(err))
-            except (ValueError, DisciplinaDesconocida) as err:
-                raise ErrorHTTP(400, str(err))
-            return {
-                "ejemplos_agregados": resultado.ejemplos_agregados,
-                "total_ejemplos_dataset": resultado.total_ejemplos_dataset,
-                "modelo_calibrado": resultado.modelo_calibrado,
-                "categorias_cubiertas": resultado.categorias_cubiertas,
-                "categorias_faltantes": resultado.categorias_faltantes,
-                "evaluacion": resultado.evaluacion,
-            }
+    @app.post("/v1/entrenamiento/videos/{identificador}/entrenar")
+    def entrenamiento_entrenar(identificador: str, cuerpo: dict):
+        try:
+            resultado = zona_entrenamiento.entrenar_con_manifiesto(
+                identificador,
+                cuerpo.get("repeticiones"),
+                str(cuerpo.get("video") or ""),
+            )
+        except VideoDePracticaNoEncontrado as err:
+            raise ErrorHTTP(404, str(err))
+        except (ValueError, DisciplinaDesconocida) as err:
+            raise ErrorHTTP(400, str(err))
+        return {
+            "ejemplos_agregados": resultado.ejemplos_agregados,
+            "total_ejemplos_dataset": resultado.total_ejemplos_dataset,
+            "modelo_calibrado": resultado.modelo_calibrado,
+            "categorias_cubiertas": resultado.categorias_cubiertas,
+            "categorias_faltantes": resultado.categorias_faltantes,
+            "evaluacion": resultado.evaluacion,
+        }
 
     return app

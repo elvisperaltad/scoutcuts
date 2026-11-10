@@ -72,6 +72,36 @@ def test_subir_rechaza_video_demasiado_grande(tmp_path):
         zona.subir("defensa", "grande.mp4", io.BytesIO(b"x" * 1000))
 
 
+def test_subir_rechaza_cuando_la_zona_llego_a_su_presupuesto(tmp_path):
+    """La zona es publica: sin este techo, una sola IP podria llenar el
+    disco del VPS con video de practica antes de que corra la limpieza."""
+    from cortador.servidor.entrenamiento import ZonaDePracticaLlena, ZonaEntrenamiento
+
+    zona = ZonaEntrenamiento(tmp_path / "zona_qa", limite_total_bytes=200)
+    zona.subir("defensa", "primero.mp4", io.BytesIO(b"x" * 300))
+    assert zona.bytes_pendientes() >= 200
+
+    with pytest.raises(ZonaDePracticaLlena):
+        zona.subir("defensa", "segundo.mp4", io.BytesIO(b"x" * 10))
+
+
+def test_el_presupuesto_se_libera_al_borrarse_el_video(tmp_path, cv2_disponible):
+    """Entrenar borra el video, asi que el presupuesto vuelve a estar libre:
+    el techo no puede dejar la zona inservible para siempre."""
+    from cortador.servidor.entrenamiento import ZonaEntrenamiento
+
+    zona = ZonaEntrenamiento(tmp_path / "zona_qa", limite_total_bytes=10 * 1024 * 1024)
+    video, _ = _subir_video_real(zona, tmp_path, lado="derecha")
+    assert zona.bytes_pendientes() > 0
+
+    zona.entrenar_con_manifiesto(
+        video.id, _manifiesto_con_una_repeticion("derecha"), "practica.mp4"
+    )
+
+    assert zona.bytes_pendientes() == 0
+    assert zona.hay_espacio() is True
+
+
 def test_entrenar_con_manifiesto_borra_el_video_tras_extraer(tmp_path, cv2_disponible):
     """La prueba mas importante de privacidad: tras entrenar, el video de
     practica ya no debe existir en disco -- ni el archivo ni su carpeta."""
